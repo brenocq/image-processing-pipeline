@@ -15,6 +15,9 @@ class Project : public scr::ProjectScript {
     void onUIRender() override;
 
     void onAttaLoop() override;
+
+  private:
+    std::vector<std::string> _testImages;
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
