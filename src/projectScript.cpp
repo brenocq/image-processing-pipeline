@@ -53,27 +53,32 @@ void Project::onUIRender() {
         if (ImGui::Combo("Test Image", &_selectedImage, imgGetter, static_cast<void*>(&_testImages), _testImages.size()))
             _shouldReprocess = true;
 
+        // Compute image ratio
+        res::Image* refImgRes = res::get<res::Image>("reference");
+        float ratio = float(refImgRes->getHeight()) / float(refImgRes->getWidth());
+
+        // Get ImGui images
         ImTextureID refImg = (ImTextureID)gfx::getImGuiImage("reference");
         ImTextureID degBlackLevelImg = (ImTextureID)gfx::getImGuiImage("deg_black_level");
         ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
-        // Image degradation stages
+        // Plot image degradation stages
         const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoTickLabels;
         if (ImPlot::BeginPlot("Image degradation pipeline", {-1, 350}, ImPlotFlags_Equal)) {
             ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             float x = 0.0f;
-            ImPlot::PlotImage("Reference image", refImg, {x, 0}, {x + 1, 1});
+            ImPlot::PlotImage("Reference image", refImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
-            ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, 1});
+            ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
-            ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, 1});
+            ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, ratio});
             x += 1.3f;
-            ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, 1});
+            ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
         }
 
-        // Image processing stages
+        // Plot image processing stages
         if (ImPlot::BeginPlot("Image processing pipeline", {-1, 350}, ImPlotFlags_Equal)) {
             ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             ImPlot::EndPlot();
