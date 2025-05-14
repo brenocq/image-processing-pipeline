@@ -28,7 +28,10 @@ void Project::onLoad() {
     info.format = res::Image::Format::RGB8;
 
     // Images to store output of each pipeline stage
-    res::create<res::Image>("input", info)->load(fs::absolute("resources/" + _testImages[_selectedImage]));
+    res::Image* input = res::create<res::Image>("input", info);
+    input->load(fs::absolute("resources/" + _testImages[_selectedImage]));
+    info.width = input->getWidth();
+    info.height = input->getHeight();
     res::create<res::Image>("black_level", info);
     res::create<res::Image>("output", info);
 }
@@ -46,12 +49,16 @@ void Project::onUIRender() {
         if (ImGui::Combo("Test Image", &_selectedImage, imgGetter, static_cast<void*>(&_testImages), _testImages.size()))
             _shouldReprocess = true;
 
-        ImTextureID imguiImg = (ImTextureID)gfx::getImGuiImage("input");
+        ImTextureID inputImg = (ImTextureID)gfx::getImGuiImage("input");
+        ImTextureID blackLevelImg = (ImTextureID)gfx::getImGuiImage("black_level");
+        ImTextureID outputImg = (ImTextureID)gfx::getImGuiImage("output");
 
         // Corruption stages
         if (ImPlot::BeginPlot("Corruption stages", {-1, 350})) {
             ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_NoTickLabels);
-            ImPlot::PlotImage("Original Image", imguiImg, {0, 0}, {1, 1});
+            ImPlot::PlotImage("Original image", inputImg, {0, 0}, {1, 1});
+            ImPlot::PlotImage("Black level image", blackLevelImg, {1, 0}, {2, 1});
+            ImPlot::PlotImage("Corrupted image", outputImg, {2, 0}, {3, 1});
             ImPlot::EndPlot();
         }
 
@@ -70,15 +77,37 @@ void Project::onAttaLoop() {
         LOG_INFO("Project", "Processing test image [w]$0[]...", testImgPath);
 
         res::Image* inputImg = res::get<res::Image>("input");
+        uint8_t* inputData = inputImg->getData();
+        uint32_t w = inputImg->getWidth();
+        uint32_t h = inputImg->getHeight();
+        uint32_t ch = inputImg->getChannels();
+
         res::Image* blackLevelImg = res::get<res::Image>("black_level");
+        uint8_t* blackLevelData = blackLevelImg->getData();
+
         res::Image* outputImg = res::get<res::Image>("output");
+        uint8_t* outputData = outputImg->getData();
 
         // Load test image
-        inputImg->load(testImgPath);
-
+        // inputImg->load(testImgPath);
         // Resize images
-        blackLevelImg->resize(inputImg->getWidth(), inputImg->getHeight());
-        outputImg->resize(inputImg->getWidth(), inputImg->getHeight());
+        // blackLevelImg->resize(inputImg->getWidth(), inputImg->getHeight());
+        // outputImg->resize(inputImg->getWidth(), inputImg->getHeight());
+
+        //---------- Image degradation pipeline ----------//
+        // Black level offset
+        for (uint32_t i = 0; i < w * h * ch; i++) {
+            if (uint32_t(inputData[i]) + _blackLevelOffset >= 255)
+                blackLevelData[i] = 255;
+            else
+                blackLevelData[i] = inputData[i] + _blackLevelOffset;
+        }
+        blackLevelImg->update();
+
+        // Output image
+        for (uint32_t i = 0; i < w * h * ch; i++)
+            outputData[i] = blackLevelData[i] - _blackLevelOffset;
+        outputImg->update();
 
         _shouldReprocess = false;
     }

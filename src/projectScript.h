@@ -20,6 +20,10 @@ class Project : public scr::ProjectScript {
     std::vector<std::string> _testImages;
     int _selectedImage = 0;
     bool _shouldReprocess = true;
+
+    //----- Image degradation pipeline -----//
+    // Black level offset
+    uint8_t _blackLevelOffset = 20;
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
