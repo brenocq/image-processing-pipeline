@@ -18,6 +18,8 @@ class Project : public scr::ProjectScript {
 
   private:
     std::vector<std::string> _testImages;
+    int _selectedImage = 0;
+    bool _shouldReprocess = true;
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
