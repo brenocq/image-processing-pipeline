@@ -24,6 +24,9 @@ class Project : public scr::ProjectScript {
     //----- Image degradation pipeline -----//
     // Black level offset
     uint8_t _blackLevelOffset = 20;
+
+    // Dead pixel injection
+    float _percentDeadPixels = 0.001f; // 0.1% of pixels
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

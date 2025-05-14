@@ -9,6 +9,7 @@
 #include "implot.h"
 #include <atta/graphics/interface.h>
 #include <atta/resource/interface.h>
+#include <random>
 
 void Project::onLoad() {
     // TODO get project path
@@ -28,12 +29,15 @@ void Project::onLoad() {
     info.format = res::Image::Format::RGB8;
 
     // Images to store output of each pipeline stage
-    res::Image* input = res::create<res::Image>("input", info);
-    input->load(fs::absolute("resources/" + _testImages[_selectedImage]));
-    info.width = input->getWidth();
-    info.height = input->getHeight();
-    res::create<res::Image>("black_level", info);
-    res::create<res::Image>("output", info);
+    res::Image* ref = res::create<res::Image>("reference", info);
+    ref->load(fs::absolute("resources/" + _testImages[_selectedImage]));
+    info.width = ref->getWidth();
+    info.height = ref->getHeight();
+
+    // Image degradation pipeline
+    res::create<res::Image>("deg_black_level", info);
+    res::create<res::Image>("deg_dead_pixel", info);
+    res::create<res::Image>("deg_output", info);
 }
 
 void Project::onUIRender() {
@@ -49,22 +53,29 @@ void Project::onUIRender() {
         if (ImGui::Combo("Test Image", &_selectedImage, imgGetter, static_cast<void*>(&_testImages), _testImages.size()))
             _shouldReprocess = true;
 
-        ImTextureID inputImg = (ImTextureID)gfx::getImGuiImage("input");
-        ImTextureID blackLevelImg = (ImTextureID)gfx::getImGuiImage("black_level");
-        ImTextureID outputImg = (ImTextureID)gfx::getImGuiImage("output");
+        ImTextureID refImg = (ImTextureID)gfx::getImGuiImage("reference");
+        ImTextureID degBlackLevelImg = (ImTextureID)gfx::getImGuiImage("deg_black_level");
+        ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
+        ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
-        // Corruption stages
-        if (ImPlot::BeginPlot("Corruption stages", {-1, 350})) {
-            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_NoTickLabels);
-            ImPlot::PlotImage("Original image", inputImg, {0, 0}, {1, 1});
-            ImPlot::PlotImage("Black level image", blackLevelImg, {1, 0}, {2, 1});
-            ImPlot::PlotImage("Corrupted image", outputImg, {2, 0}, {3, 1});
+        // Image degradation stages
+        const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoTickLabels;
+        if (ImPlot::BeginPlot("Image degradation pipeline", {-1, 350}, ImPlotFlags_Equal)) {
+            ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
+            float x = 0.0f;
+            ImPlot::PlotImage("Reference image", refImg, {x, 0}, {x + 1, 1});
+            x += 1.1f;
+            ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, 1});
+            x += 1.1f;
+            ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, 1});
+            x += 1.3f;
+            ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, 1});
             ImPlot::EndPlot();
         }
 
-        // Correction stages
-        if (ImPlot::BeginPlot("Correction stages", {-1, 350})) {
-            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_NoTickLabels);
+        // Image processing stages
+        if (ImPlot::BeginPlot("Image processing pipeline", {-1, 350}, ImPlotFlags_Equal)) {
+            ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             ImPlot::EndPlot();
         }
     }
@@ -76,37 +87,47 @@ void Project::onAttaLoop() {
         fs::path testImgPath = fs::absolute("resources/" + _testImages[_selectedImage]);
         LOG_INFO("Project", "Processing test image [w]$0[]...", testImgPath);
 
-        res::Image* inputImg = res::get<res::Image>("input");
-        uint8_t* inputData = inputImg->getData();
-        uint32_t w = inputImg->getWidth();
-        uint32_t h = inputImg->getHeight();
-        uint32_t ch = inputImg->getChannels();
+        res::Image* refImg = res::get<res::Image>("reference");
+        uint8_t* refData = refImg->getData();
+        uint32_t w = refImg->getWidth();
+        uint32_t h = refImg->getHeight();
+        uint32_t ch = refImg->getChannels();
 
-        res::Image* blackLevelImg = res::get<res::Image>("black_level");
+        res::Image* blackLevelImg = res::get<res::Image>("deg_black_level");
         uint8_t* blackLevelData = blackLevelImg->getData();
 
-        res::Image* outputImg = res::get<res::Image>("output");
+        res::Image* deadPixelImg = res::get<res::Image>("deg_dead_pixel");
+        uint8_t* deadPixelData = deadPixelImg->getData();
+
+        res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
 
         // Load test image
-        // inputImg->load(testImgPath);
+        // refImg->load(testImgPath);
         // Resize images
-        // blackLevelImg->resize(inputImg->getWidth(), inputImg->getHeight());
-        // outputImg->resize(inputImg->getWidth(), inputImg->getHeight());
+        // blackLevelImg->resize(refImg->getWidth(), refImg->getHeight());
+        // outputImg->resize(refImg->getWidth(), refImg->getHeight());
 
         //---------- Image degradation pipeline ----------//
         // Black level offset
         for (uint32_t i = 0; i < w * h * ch; i++) {
-            if (uint32_t(inputData[i]) + _blackLevelOffset >= 255)
+            if (uint32_t(refData[i]) + _blackLevelOffset >= 255)
                 blackLevelData[i] = 255;
             else
-                blackLevelData[i] = inputData[i] + _blackLevelOffset;
+                blackLevelData[i] = refData[i] + _blackLevelOffset;
         }
         blackLevelImg->update();
 
+        // Dead pixel injection (randomly set a channel to 0 - simulate photosite failure)
+        std::mt19937 gen(42);                           // Random number generator
+        std::uniform_real_distribution<> dis(0.0, 1.0); // Uniform distribution in [0, 1]
+        for (uint32_t i = 0; i < w * h * ch; i++)
+            deadPixelData[i] = dis(gen) < _percentDeadPixels ? 0 : blackLevelData[i];
+        deadPixelImg->update();
+
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
-            outputData[i] = blackLevelData[i] - _blackLevelOffset;
+            outputData[i] = deadPixelData[i];
         outputImg->update();
 
         _shouldReprocess = false;
