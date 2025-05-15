@@ -281,10 +281,17 @@ void Project::onAttaLoop() {
                 float r2 = r * r;
                 float r4 = r2 * r2;
 
-                // Compute barrel distortion polynomial
-                float lensDist = 1.0f + _barrelDistortionCoeffs[0] * r2 + _barrelDistortionCoeffs[1] * r4;
-                float xDist = center.x + delta.x * lensDist;
-                float yDist = center.y + delta.y * lensDist;
+                // Compute barrel distortion polynomial (source radius)
+                float lensR = r * (_barrelDistortionCoeffs[0] + _barrelDistortionCoeffs[1] * r2 + _barrelDistortionCoeffs[2] * r4);
+
+                // Compute angle
+                float angle = 0.0f;
+                if (delta.squareLength() > 1e-5f)
+                    angle = std::atan2(delta.y, delta.x); // Avoid division by zero at the exact center
+
+                // Compute source pixel coordinates
+                float xDist = center.x + lensR * std::cos(angle) * center.length();
+                float yDist = center.y + lensR * std::sin(angle) * center.length();
 
                 // Sample distorted coordinate in source image
                 atta::vec3 pixel = bilinearSampling(chromaticAberrationData, w, h, ch, xDist, yDist);

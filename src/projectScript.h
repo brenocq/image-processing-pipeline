@@ -18,7 +18,7 @@ class Project : public scr::ProjectScript {
 
   private:
     std::vector<std::string> _testImages;
-    int _selectedImage = 0;
+    int _selectedImage = 2;
     bool _shouldReprocess = true;
 
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
@@ -82,20 +82,20 @@ class Project : public scr::ProjectScript {
 
     //--- Vignetting error ---//
     // Vignetting will be modeled as a simply multiplier that is dependent on the normalized radial distance
-    // V(r)= a⋅r^4 + b⋅r^3 + c⋅r^2 + d⋅r + e
+    // V(r) = a⋅r^4 + b⋅r^3 + c⋅r^2 + d⋅r + e
     std::array<float, 5> _vignettingCoeffs = {-0.5f, 0.0f, 0.0f, -0.2f, 1.0f}; // Coefficients for the vignetting polynomial (a, b, c, d, e)
 
     //--- Chromatic aberration error ---//
     // Chromatic aberration will be modeled as a simple polynomial that is dependent on the normalized radial distance
-    // C(r)= a⋅r^2 + b⋅r^3
+    // C(r) = a⋅r^2 + b⋅r^3
     // A different polynomial will be used for the red and blue channels (green channel will be the reference)
     std::array<float, 2> _chromaticAberrationCoeffsR = {0.006f, 0.003f};   // Chromatic aberration polynomial for the red channel
     std::array<float, 2> _chromaticAberrationCoeffsB = {-0.006f, -0.003f}; // Chromatic aberration polynomial for the blue channel
 
     //--- Barrel lens distortion ---//
     // Barrel distortion will be modeled as a simple polynomial that is dependent on the normalized radial distance
-    // D(r)= r + a⋅r^2 + b⋅r^4
-    std::array<float, 2> _barrelDistortionCoeffs = {-0.3f, -0.1f}; // Coefficients for the barrel distortion polynomial (a, b)
+    // D(r) = r * (a + b⋅r^2 + c⋅r^4)
+    std::array<float, 3> _barrelDistortionCoeffs = {0.7f, 0.3f, -0.1f}; // Coefficients for the barrel distortion polynomial (a, b, c)
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
