@@ -11,6 +11,20 @@
 #include <atta/resource/interface.h>
 #include <random>
 
+std::array<atta::vec3, Project::COLOR_SHADING_COUNT> Project::_colorShadingError = {
+    // {R_gain, G_gain, B_gain} // Distance from center (Index 0 = center, Index N = corner)
+    atta::vec3{1.000f, 1.000f, 1.000f}, // Index 0 (Center)
+    atta::vec3{1.022f, 0.978f, 1.022f}, // Index 1
+    atta::vec3{1.044f, 0.956f, 1.044f}, // Index 2
+    atta::vec3{1.067f, 0.933f, 1.067f}, // Index 3
+    atta::vec3{1.089f, 0.911f, 1.089f}, // Index 4
+    atta::vec3{1.111f, 0.889f, 1.111f}, // Index 5 (Mid-way)
+    atta::vec3{1.133f, 0.867f, 1.133f}, // Index 6
+    atta::vec3{1.156f, 0.844f, 1.156f}, // Index 7
+    atta::vec3{1.178f, 0.822f, 1.178f}, // Index 8
+    atta::vec3{1.200f, 0.800f, 1.200f}  // Index 9 (Corner - strong magenta cast)
+};
+
 void Project::onLoad() {
     // TODO get project path
     // Save name of all test images when the project is first loaded
@@ -46,8 +60,77 @@ void Project::onLoad() {
 }
 
 void Project::onUIRender() {
+
+    ImGui::SetNextWindowSize({500, 750}, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Camera setup")) {
+        if (ImGui::CollapsingHeader("White balance error", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::SliderFloat("Color temperature (K)", &_colorTemperature, 2500.0f, 10000.0f, "%.0f K"))
+                _shouldReprocess = true;
+        }
+
+        if (ImGui::CollapsingHeader("Barrel lens distortion", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Barrel distortion coefficients");
+            if (ImGui::SliderFloat("k1", &_barrelDistortionCoeffs[0], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("k2", &_barrelDistortionCoeffs[1], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("k3", &_barrelDistortionCoeffs[2], -1.0f, 1.0f))
+                _shouldReprocess = true;
+        }
+
+        if (ImGui::CollapsingHeader("Color shading error", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Color shading coefficients");
+            for (size_t i = 0; i < _colorShadingError.size(); i++)
+                if (ImGui::SliderFloat3(std::to_string(i).c_str(), &_colorShadingError[i].x, 0.5f, 1.5f))
+                    _shouldReprocess = true;
+        }
+
+        if (ImGui::CollapsingHeader("Chromatic aberration", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Chromatic aberration coefficients");
+            if (ImGui::SliderFloat("a (R)", &_chromaticAberrationCoeffsR[0], -0.02f, 0.02f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("b (R)", &_chromaticAberrationCoeffsR[1], -0.02f, 0.02f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("a (B)", &_chromaticAberrationCoeffsB[0], -0.02f, 0.02f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("b (B)", &_chromaticAberrationCoeffsB[1], -0.02f, 0.02f))
+                _shouldReprocess = true;
+        }
+
+        if (ImGui::CollapsingHeader("Vignetting error", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Vignetting coefficients");
+            if (ImGui::SliderFloat("a", &_vignettingCoeffs[0], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("b", &_vignettingCoeffs[1], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("c", &_vignettingCoeffs[2], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("d", &_vignettingCoeffs[3], -1.0f, 1.0f))
+                _shouldReprocess = true;
+            if (ImGui::SliderFloat("e", &_vignettingCoeffs[4], -1.0f, 1.0f))
+                _shouldReprocess = true;
+        }
+
+        if (ImGui::CollapsingHeader("Black level offset", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            int blackLevelOffset = (int)_blackLevelOffset;
+            if (ImGui::SliderInt("Black level offset##BLO", &blackLevelOffset, 0, 50)) {
+                _blackLevelOffset = (uint8_t)blackLevelOffset;
+                _shouldReprocess = true;
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Dead pixel injection", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            float percentDeadPixels = _percentDeadPixels * 100.0f;
+            if (ImGui::SliderFloat("Percent of dead pixels", &percentDeadPixels, 0.0f, 1.0f, "%.2f%%")) {
+                _percentDeadPixels = percentDeadPixels / 100.0f;
+                _shouldReprocess = true;
+            }
+        }
+    }
+    ImGui::End();
+
     ImGui::SetNextWindowSize({1000, 750}, ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Image Processing Setup")) {
+    if (ImGui::Begin("Image Pipeline")) {
         // Combo to select test image
         auto imgGetter = [](void* user_data, int idx) -> const char* {
             const auto* vec = static_cast<const std::vector<std::string>*>(user_data);
@@ -217,8 +300,8 @@ void Project::onAttaLoop() {
 
                 // Interpolate gain
                 float t = r * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
-                const atta::vec3& gain1 = _temperatureGainMap[gainIdx1];
-                const atta::vec3& gain2 = _temperatureGainMap[gainIdx2];
+                const atta::vec3& gain1 = _colorShadingError[gainIdx1];
+                const atta::vec3& gain2 = _colorShadingError[gainIdx2];
                 atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
 
                 uint8_t* inPix = &lensData[idx];
@@ -282,9 +365,9 @@ void Project::onAttaLoop() {
                                    _vignettingCoeffs[4];
 
                 // Apply vignetting to the pixel
-                vignettingData[idx] = static_cast<uint8_t>(std::min(255.0f, chromaticAberrationData[idx] * vignetting));
-                vignettingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, chromaticAberrationData[idx + 1] * vignetting));
-                vignettingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, chromaticAberrationData[idx + 2] * vignetting));
+                vignettingData[idx] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx] * vignetting, 0.0f, 255.0f));
+                vignettingData[idx + 1] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx + 1] * vignetting, 0.0f, 255.0f));
+                vignettingData[idx + 2] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx + 2] * vignetting, 0.0f, 255.0f));
             }
         }
         vignettingImg->update();

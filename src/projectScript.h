@@ -66,19 +66,7 @@ class Project : public scr::ProjectScript {
     //--- Color shading error ---//
     static constexpr size_t COLOR_SHADING_COUNT = 10;
     // Assuming that the color shading error has rotation symmetry, we define the gains on a line from the center of the image to the corner
-    static constexpr std::array<atta::vec3, COLOR_SHADING_COUNT> _colorShadingError = {
-        // {R_gain, G_gain, B_gain} // Distance from center (Index 0 = center, Index N = corner)
-        atta::vec3{1.000f, 1.000f, 1.000f}, // Index 0 (Center)
-        atta::vec3{1.022f, 0.978f, 1.022f}, // Index 1
-        atta::vec3{1.044f, 0.956f, 1.044f}, // Index 2
-        atta::vec3{1.067f, 0.933f, 1.067f}, // Index 3
-        atta::vec3{1.089f, 0.911f, 1.089f}, // Index 4
-        atta::vec3{1.111f, 0.889f, 1.111f}, // Index 5 (Mid-way)
-        atta::vec3{1.133f, 0.867f, 1.133f}, // Index 6
-        atta::vec3{1.156f, 0.844f, 1.156f}, // Index 7
-        atta::vec3{1.178f, 0.822f, 1.178f}, // Index 8
-        atta::vec3{1.200f, 0.800f, 1.200f}  // Index 9 (Corner - strong magenta cast)
-    };
+    static std::array<atta::vec3, COLOR_SHADING_COUNT> _colorShadingError;
 
     //--- Chromatic aberration error ---//
     // Chromatic aberration will be modeled as a simple polynomial that is dependent on the normalized radial distance
