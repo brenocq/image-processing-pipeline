@@ -81,7 +81,15 @@ class Project : public scr::ProjectScript {
     // Vignetting will be modeled as a simply multiplier that is dependent on the normalized radial distance
     // V(r)= a⋅r^4 + b⋅r^3 + c⋅r^2 + d⋅r + e
     std::array<float, 5> _vignettingCoeffs = {-0.5f, 0.0f, 0.0f, -0.2f, 1.0f}; // Coefficients for the vignetting polynomial (a, b, c, d, e)
+
+    //--- Chromatic aberration error ---//
+    // Chromatic aberration will be modeled as a simple polynomial that is dependent on the normalized radial distance
+    // C(r)= a⋅r^2 + b⋅r^3
+    // A different polynomial will be used for the red and blue channels (green channel will be the reference)
+    std::array<float, 2> _chromaticAberrationCoeffsR = {0.003f, 0.0015f};   // Chromatic aberration polynomial for the red channel
+    std::array<float, 2> _chromaticAberrationCoeffsB = {-0.003f, -0.0015f}; // Chromatic aberration polynomial for the blue channel
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
+
 #endif // PROJECT_SCRIPT_H

@@ -40,6 +40,7 @@ void Project::onLoad() {
     res::create<res::Image>("deg_white_balance", info);
     res::create<res::Image>("deg_color_shading", info);
     res::create<res::Image>("deg_vignetting", info);
+    res::create<res::Image>("deg_chromatic_aberration", info);
     res::create<res::Image>("deg_output", info);
 }
 
@@ -67,6 +68,7 @@ void Project::onUIRender() {
         ImTextureID degWhiteBalanceImg = (ImTextureID)gfx::getImGuiImage("deg_white_balance");
         ImTextureID degColorShadingImg = (ImTextureID)gfx::getImGuiImage("deg_color_shading");
         ImTextureID degVignettingImg = (ImTextureID)gfx::getImGuiImage("deg_vignetting");
+        ImTextureID degChromaticAberrationImg = (ImTextureID)gfx::getImGuiImage("deg_chromatic_aberration");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         // Plot image degradation stages
@@ -85,6 +87,8 @@ void Project::onUIRender() {
             ImPlot::PlotImage("Color shading error", degColorShadingImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
             ImPlot::PlotImage("Vignetting error", degVignettingImg, {x, 0}, {x + 1, ratio});
+            x += 1.1f;
+            ImPlot::PlotImage("Chromatic aberration", degChromaticAberrationImg, {x, 0}, {x + 1, ratio});
             x += 1.3f;
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
@@ -108,6 +112,7 @@ void Project::onAttaLoop() {
         uint8_t* refData = refImg->getData();
         uint32_t w = refImg->getWidth();
         uint32_t h = refImg->getHeight();
+        atta::vec2 center(w / 2.0f, h / 2.0f);
         uint32_t ch = refImg->getChannels();
 
         res::Image* blackLevelImg = res::get<res::Image>("deg_black_level");
@@ -124,6 +129,9 @@ void Project::onAttaLoop() {
 
         res::Image* vignettingImg = res::get<res::Image>("deg_vignetting");
         uint8_t* vignettingData = vignettingImg->getData();
+
+        res::Image* chromaticAberrationImg = res::get<res::Image>("deg_chromatic_aberration");
+        uint8_t* chromaticAberrationData = chromaticAberrationImg->getData();
 
         res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
@@ -172,17 +180,16 @@ void Project::onAttaLoop() {
                 uint32_t idx = (y * w + x) * ch;
 
                 // Compute normalized radial distance
-                float dist = (atta::vec2(x, y) - atta::vec2(w / 2.0f, h / 2.0f)).length();
-                dist /= (atta::vec2(w / 2.0f, h / 2.0f)).length();
+                float r = (atta::vec2(x, y) - center).length() / center.length();
 
                 // Compute color shading indices
-                size_t gainIdx1 = static_cast<size_t>(dist * (COLOR_SHADING_COUNT - 1));
+                size_t gainIdx1 = static_cast<size_t>(r * (COLOR_SHADING_COUNT - 1));
                 size_t gainIdx2 = gainIdx1 + 1;
                 if (gainIdx2 >= COLOR_SHADING_COUNT)
                     gainIdx2 = COLOR_SHADING_COUNT - 1;
 
                 // Interpolate gain
-                float t = dist * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
+                float t = r * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
                 const atta::vec3& gain1 = _temperatureGainMap[gainIdx1];
                 const atta::vec3& gain2 = _temperatureGainMap[gainIdx2];
                 atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
@@ -205,12 +212,14 @@ void Project::onAttaLoop() {
                 uint32_t idx = (y * w + x) * ch;
 
                 // Compute normalized radial distance
-                float dist = (atta::vec2(x, y) - atta::vec2(w / 2.0f, h / 2.0f)).length();
-                dist /= (atta::vec2(w / 2.0f, h / 2.0f)).length();
+                float r = (atta::vec2(x, y) - center).length() / center.length();
+                float r2 = r * r;
+                float r3 = r2 * r;
+                float r4 = r2 * r2;
 
                 // Compute vignetting polynomial
-                float vignetting = _vignettingCoeffs[0] * std::pow(dist, 4) + _vignettingCoeffs[1] * std::pow(dist, 3) +
-                                   _vignettingCoeffs[2] * std::pow(dist, 2) + _vignettingCoeffs[3] * dist + _vignettingCoeffs[4];
+                float vignetting = _vignettingCoeffs[0] * r4 + _vignettingCoeffs[1] * r3 + _vignettingCoeffs[2] * r2 + _vignettingCoeffs[3] * r +
+                                   _vignettingCoeffs[4];
 
                 // Apply vignetting to the pixel
                 vignettingData[idx] = static_cast<uint8_t>(std::min(255.0f, colorShadingData[idx] * vignetting));
@@ -219,6 +228,49 @@ void Project::onAttaLoop() {
             }
         }
         vignettingImg->update();
+
+        // Chromatic aberration
+        for (uint32_t y = 0; y < h; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                uint32_t idx = (y * w + x) * ch;
+                // Compute normalized radial distance
+                atta::vec2 delta = atta::vec2(x, y) - center;
+                float r = delta.length() / center.length();
+                float r2 = r * r;
+                float r3 = r2 * r;
+
+                // Calculate chromatic aberration displacement for Red channel
+                float displacementR = (_chromaticAberrationCoeffsR[0] * r2 + _chromaticAberrationCoeffsR[1] * r3);
+                float sxR_float = center.x + delta.x * (1.0f + displacementR);
+                float syR_float = center.y + delta.y * (1.0f + displacementR);
+
+                // Calculate chromatic aberration displacement for Blue channel
+                float displacementB = (_chromaticAberrationCoeffsB[0] * r2 + _chromaticAberrationCoeffsB[1] * r3);
+                float sxB_float = center.x + delta.x * (1.0f + displacementB);
+                float syB_float = center.y + delta.y * (1.0f + displacementB);
+
+                // Green channel samples from original (x,y) - no displacement
+                uint32_t sxG = x;
+                uint32_t syG = y;
+
+                // Convert to integer coordinates and clamp (Nearest Neighbor sampling)
+                uint32_t sxR = std::clamp(int(std::round(sxR_float)), 0, int(w) - 1);
+                uint32_t syR = std::clamp(int(std::round(syR_float)), 0, int(h) - 1);
+                uint32_t sxB = std::clamp(int(std::round(sxB_float)), 0, int(w) - 1);
+                uint32_t syB = std::clamp(int(std::round(syB_float)), 0, int(h) - 1);
+
+                // Calculate source pixel indices
+                uint32_t sourceIdxR = (syR * w + sxR) * ch;
+                uint32_t sourceIdxG = (syG * w + sxG) * ch;
+                uint32_t sourceIdxB = (syB * w + sxB) * ch;
+
+                // Sample from vignettingData and write to chromaticAberrationData
+                chromaticAberrationData[idx + 0] = vignettingData[sourceIdxR + 0];
+                chromaticAberrationData[idx + 1] = vignettingData[sourceIdxG + 1];
+                chromaticAberrationData[idx + 2] = vignettingData[sourceIdxB + 2];
+            }
+        }
+        chromaticAberrationImg->update();
 
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
