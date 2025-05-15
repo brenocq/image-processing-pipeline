@@ -21,6 +21,9 @@ class Project : public scr::ProjectScript {
     int _selectedImage = 0;
     bool _shouldReprocess = true;
 
+    static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
+    static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
+
     //----- Image degradation pipeline -----//
     //--- Black level offset ---//
     uint8_t _blackLevelOffset = 20;
@@ -86,8 +89,8 @@ class Project : public scr::ProjectScript {
     // Chromatic aberration will be modeled as a simple polynomial that is dependent on the normalized radial distance
     // C(r)= a⋅r^2 + b⋅r^3
     // A different polynomial will be used for the red and blue channels (green channel will be the reference)
-    std::array<float, 2> _chromaticAberrationCoeffsR = {0.003f, 0.0015f};   // Chromatic aberration polynomial for the red channel
-    std::array<float, 2> _chromaticAberrationCoeffsB = {-0.003f, -0.0015f}; // Chromatic aberration polynomial for the blue channel
+    std::array<float, 2> _chromaticAberrationCoeffsR = {0.006f, 0.003f};   // Chromatic aberration polynomial for the red channel
+    std::array<float, 2> _chromaticAberrationCoeffsB = {-0.006f, -0.003f}; // Chromatic aberration polynomial for the blue channel
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

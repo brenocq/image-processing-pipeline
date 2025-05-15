@@ -249,25 +249,15 @@ void Project::onAttaLoop() {
                 float sxB_float = center.x + delta.x * (1.0f + displacementB);
                 float syB_float = center.y + delta.y * (1.0f + displacementB);
 
-                // Green channel samples from original (x,y) - no displacement
-                uint32_t sxG = x;
-                uint32_t syG = y;
+                // Sample from vignettingData (nearest neighbor sampling)
+                // chromaticAberrationData[idx + 0] = (uint8_t)nearestNeighborSampling(vignettingData, w, h, ch, sxR_float, syR_float).x;
+                // chromaticAberrationData[idx + 1] = vignettingData[(y * w + x) * ch + 1];
+                // chromaticAberrationData[idx + 2] = (uint8_t)nearestNeighborSampling(vignettingData, w, h, ch, sxB_float, syB_float).z;
 
-                // Convert to integer coordinates and clamp (Nearest Neighbor sampling)
-                uint32_t sxR = std::clamp(int(std::round(sxR_float)), 0, int(w) - 1);
-                uint32_t syR = std::clamp(int(std::round(syR_float)), 0, int(h) - 1);
-                uint32_t sxB = std::clamp(int(std::round(sxB_float)), 0, int(w) - 1);
-                uint32_t syB = std::clamp(int(std::round(syB_float)), 0, int(h) - 1);
-
-                // Calculate source pixel indices
-                uint32_t sourceIdxR = (syR * w + sxR) * ch;
-                uint32_t sourceIdxG = (syG * w + sxG) * ch;
-                uint32_t sourceIdxB = (syB * w + sxB) * ch;
-
-                // Sample from vignettingData and write to chromaticAberrationData
-                chromaticAberrationData[idx + 0] = vignettingData[sourceIdxR + 0];
-                chromaticAberrationData[idx + 1] = vignettingData[sourceIdxG + 1];
-                chromaticAberrationData[idx + 2] = vignettingData[sourceIdxB + 2];
+                // Sample from vignettingData (bilinear sampling)
+                chromaticAberrationData[idx + 0] = (uint8_t)bilinearSampling(vignettingData, w, h, ch, sxR_float, syR_float).x;
+                chromaticAberrationData[idx + 1] = vignettingData[(y * w + x) * ch + 1];
+                chromaticAberrationData[idx + 2] = (uint8_t)bilinearSampling(vignettingData, w, h, ch, sxB_float, syB_float).z;
             }
         }
         chromaticAberrationImg->update();
@@ -308,4 +298,66 @@ atta::vec3 Project::tempToGain(float temp) {
 
     // Linear interpolation
     return (1.0f - t) * gains1 + t * gains2;
+}
+
+atta::vec3 Project::nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y) {
+    atta::vec3 result;
+
+    // Convert to integer coordinates and clamp (Nearest Neighbor sampling)
+    uint32_t sx = std::clamp(int(std::round(x)), 0, int(w) - 1);
+    uint32_t sy = std::clamp(int(std::round(y)), 0, int(h) - 1);
+
+    // Calculate source pixel index
+    uint32_t srcIdx = (sy * w + sx) * ch;
+
+    // Sample from source image
+    result[0] = data[srcIdx + 0];
+    result[1] = data[srcIdx + 1];
+    result[2] = data[srcIdx + 2];
+
+    return result;
+}
+
+atta::vec3 Project::bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y) {
+    // Determine the integer coordinates of the top-left pixel of the 2x2 grid
+    int x0 = static_cast<int>(std::floor(x));
+    int y0 = static_cast<int>(std::floor(y));
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    // Calculate fractional parts for interpolation
+    float fx = x - static_cast<float>(x0);
+    float fy = y - static_cast<float>(y0);
+
+    // Helper lambda to get pixel value with clamping and conversion to float atta::vec3
+    auto get_pixel = [&](int xi, int yi) {
+        // Clamp coordinates to be within image bounds
+        int clamped_x = std::clamp(xi, 0, static_cast<int>(w) - 1);
+        int clamped_y = std::clamp(yi, 0, static_cast<int>(h) - 1);
+
+        uint32_t idx = (clamped_y * w + clamped_x) * ch;
+
+        // Assuming ch >= 3 for R, G, B
+        return atta::vec3(static_cast<float>(data[idx + 0]), // R
+                          static_cast<float>(data[idx + 1]), // G
+                          static_cast<float>(data[idx + 2])  // B
+        );
+    };
+
+    // Get the color values of the four surrounding pixels
+    atta::vec3 q00 = get_pixel(x0, y0); // Top-left
+    atta::vec3 q10 = get_pixel(x1, y0); // Top-right
+    atta::vec3 q01 = get_pixel(x0, y1); // Bottom-left
+    atta::vec3 q11 = get_pixel(x1, y1); // Bottom-right
+
+    // Interpolate along the x-axis for the top row
+    atta::vec3 p0 = q00 * (1.0f - fx) + q10 * fx;
+
+    // Interpolate along the x-axis for the bottom row
+    atta::vec3 p1 = q01 * (1.0f - fx) + q11 * fx;
+
+    // Interpolate along the y-axis between the results of the x-interpolations
+    atta::vec3 result = p0 * (1.0f - fy) + p1 * fy;
+
+    return result;
 }
