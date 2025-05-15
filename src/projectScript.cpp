@@ -37,6 +37,7 @@ void Project::onLoad() {
     // Image degradation pipeline
     res::create<res::Image>("deg_black_level", info);
     res::create<res::Image>("deg_dead_pixel", info);
+    res::create<res::Image>("deg_white_balance", info);
     res::create<res::Image>("deg_output", info);
 }
 
@@ -61,6 +62,7 @@ void Project::onUIRender() {
         ImTextureID refImg = (ImTextureID)gfx::getImGuiImage("reference");
         ImTextureID degBlackLevelImg = (ImTextureID)gfx::getImGuiImage("deg_black_level");
         ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
+        ImTextureID degWhiteBalanceImg = (ImTextureID)gfx::getImGuiImage("deg_white_balance");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         // Plot image degradation stages
@@ -73,6 +75,8 @@ void Project::onUIRender() {
             ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
             ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, ratio});
+            x += 1.1f;
+            ImPlot::PlotImage("White balance error", degWhiteBalanceImg, {x, 0}, {x + 1, ratio});
             x += 1.3f;
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
@@ -104,6 +108,9 @@ void Project::onAttaLoop() {
         res::Image* deadPixelImg = res::get<res::Image>("deg_dead_pixel");
         uint8_t* deadPixelData = deadPixelImg->getData();
 
+        res::Image* whiteBalanceImg = res::get<res::Image>("deg_white_balance");
+        uint8_t* whiteBalanceData = whiteBalanceImg->getData();
+
         res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
 
@@ -130,11 +137,55 @@ void Project::onAttaLoop() {
             deadPixelData[i] = dis(gen) < _percentDeadPixels ? 0 : blackLevelData[i];
         deadPixelImg->update();
 
+        // White balance error
+        for (uint32_t i = 0; i < w * h; i++) {
+            // Get the RGB values for the current pixel
+            uint8_t r = deadPixelData[i * ch];
+            uint8_t g = deadPixelData[i * ch + 1];
+            uint8_t b = deadPixelData[i * ch + 2];
+
+            // Apply the temperature gain to each channel
+            const atta::vec3 gains = tempToGain(_colorTemperature);
+            whiteBalanceData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
+            whiteBalanceData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
+            whiteBalanceData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
+        }
+        whiteBalanceImg->update();
+
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
-            outputData[i] = deadPixelData[i];
+            outputData[i] = whiteBalanceData[i];
         outputImg->update();
 
         _shouldReprocess = false;
     }
+}
+
+atta::vec3 Project::tempToGain(float temp) {
+    // Clamp temperature to the table's range
+    if (temp <= TEMPERATURE_GAIN_MIN)
+        return _temperatureGainMap[0];
+    if (temp >= TEMPERATURE_GAIN_MAX)
+        return _temperatureGainMap[TEMPERATURE_GAIN_COUNT - 1];
+
+    // Calculate the fractional index in the table
+    float fractionalIndex = (temp - TEMPERATURE_GAIN_MIN) / TEMPERATURE_GAIN_STEP;
+
+    size_t index1 = static_cast<size_t>(fractionalIndex);
+    size_t index2 = index1 + 1;
+
+    // Basic bounds check (should be mostly covered by temp clamping)
+    if (index1 >= TEMPERATURE_GAIN_COUNT)
+        index1 = TEMPERATURE_GAIN_COUNT - 1;
+    if (index2 >= TEMPERATURE_GAIN_COUNT)
+        index2 = TEMPERATURE_GAIN_COUNT - 1;
+
+    const atta::vec3& gains1 = _temperatureGainMap[index1];
+    const atta::vec3& gains2 = _temperatureGainMap[index2];
+
+    // Calculate the interpolation factor (t)
+    float t = fractionalIndex - static_cast<float>(index1);
+
+    // Linear interpolation
+    return (1.0f - t) * gains1 + t * gains2;
 }
