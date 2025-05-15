@@ -75,33 +75,36 @@ void Project::onUIRender() {
 
         // Plot image degradation stages
         const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoTickLabels;
-        if (ImPlot::BeginPlot("Image degradation pipeline", {-1, 350}, ImPlotFlags_Equal)) {
+        if (ImPlot::BeginPlot("Image pipeline", {-1, 350}, ImPlotFlags_Equal)) {
             ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             float x = 0.0f;
             ImPlot::PlotImage("Reference image", refImg, {x, 0}, {x + 1, ratio});
+            ImPlot::PlotText("Reference image", x + 0.5f, ratio + 0.05f);
             x += 1.1f;
             ImPlot::PlotImage("White balance error", degWhiteBalanceImg, {x, 0}, {x + 1, ratio});
+            ImPlot::PlotText("White balance error", x + 0.5f, ratio + 0.05f);
             x += 1.1f;
+            ImPlot::PlotText("Lens distortion", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Lens distortion", degLensImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
+            ImPlot::PlotText("Color shading error", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Color shading error", degColorShadingImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
+            ImPlot::PlotText("Chromatic aberration", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Chromatic aberration", degChromaticAberrationImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
-            ImPlot::PlotImage("Vignetting error", degVignettingImg, {x, 0}, {x + 1, ratio});
+            ImPlot::PlotText("Vignetting", x + 0.5f, ratio + 0.05f);
+            ImPlot::PlotImage("Vignetting", degVignettingImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
+            ImPlot::PlotText("Black level offset", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
+            ImPlot::PlotText("Dead pixel injection", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, ratio});
 
             x += 1.3f;
+            ImPlot::PlotText("Degraded image", x + 0.5f, ratio + 0.05f);
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
-            ImPlot::EndPlot();
-        }
-
-        // Plot image processing stages
-        if (ImPlot::BeginPlot("Image processing pipeline", {-1, 350}, ImPlotFlags_Equal)) {
-            ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             ImPlot::EndPlot();
         }
     }
