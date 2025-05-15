@@ -76,6 +76,11 @@ class Project : public scr::ProjectScript {
         atta::vec3{1.178f, 0.822f, 1.178f}, // Index 8
         atta::vec3{1.200f, 0.800f, 1.200f}  // Index 9 (Corner - strong magenta cast)
     };
+
+    //--- Vignetting error ---//
+    // Vignetting will be modeled as a simply multiplier that is dependent on the normalized radial distance
+    // V(r)= a⋅r^4 + b⋅r^3 + c⋅r^2 + d⋅r + e
+    std::array<float, 5> _vignettingCoeffs = {-0.5f, 0.0f, 0.0f, -0.2f, 1.0f}; // Coefficients for the vignetting polynomial (a, b, c, d, e)
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

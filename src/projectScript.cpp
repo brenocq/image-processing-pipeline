@@ -39,6 +39,7 @@ void Project::onLoad() {
     res::create<res::Image>("deg_dead_pixel", info);
     res::create<res::Image>("deg_white_balance", info);
     res::create<res::Image>("deg_color_shading", info);
+    res::create<res::Image>("deg_vignetting", info);
     res::create<res::Image>("deg_output", info);
 }
 
@@ -65,6 +66,7 @@ void Project::onUIRender() {
         ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
         ImTextureID degWhiteBalanceImg = (ImTextureID)gfx::getImGuiImage("deg_white_balance");
         ImTextureID degColorShadingImg = (ImTextureID)gfx::getImGuiImage("deg_color_shading");
+        ImTextureID degVignettingImg = (ImTextureID)gfx::getImGuiImage("deg_vignetting");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         // Plot image degradation stages
@@ -81,6 +83,8 @@ void Project::onUIRender() {
             ImPlot::PlotImage("White balance error", degWhiteBalanceImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
             ImPlot::PlotImage("Color shading error", degColorShadingImg, {x, 0}, {x + 1, ratio});
+            x += 1.1f;
+            ImPlot::PlotImage("Vignetting error", degVignettingImg, {x, 0}, {x + 1, ratio});
             x += 1.3f;
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
@@ -117,6 +121,9 @@ void Project::onAttaLoop() {
 
         res::Image* colorShadingImg = res::get<res::Image>("deg_color_shading");
         uint8_t* colorShadingData = colorShadingImg->getData();
+
+        res::Image* vignettingImg = res::get<res::Image>("deg_vignetting");
+        uint8_t* vignettingData = vignettingImg->getData();
 
         res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
@@ -160,11 +167,11 @@ void Project::onAttaLoop() {
         whiteBalanceImg->update();
 
         // Color shading error
-        for (uint32_t y = 0; y < w; y++) {
+        for (uint32_t y = 0; y < h; y++) {
             for (uint32_t x = 0; x < w; x++) {
                 uint32_t idx = (y * w + x) * ch;
 
-                // Compute normalized distance
+                // Compute normalized radial distance
                 float dist = (atta::vec2(x, y) - atta::vec2(w / 2.0f, h / 2.0f)).length();
                 dist /= (atta::vec2(w / 2.0f, h / 2.0f)).length();
 
@@ -192,9 +199,30 @@ void Project::onAttaLoop() {
         }
         colorShadingImg->update();
 
+        // Vignetting error
+        for (uint32_t y = 0; y < h; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                uint32_t idx = (y * w + x) * ch;
+
+                // Compute normalized radial distance
+                float dist = (atta::vec2(x, y) - atta::vec2(w / 2.0f, h / 2.0f)).length();
+                dist /= (atta::vec2(w / 2.0f, h / 2.0f)).length();
+
+                // Compute vignetting polynomial
+                float vignetting = _vignettingCoeffs[0] * std::pow(dist, 4) + _vignettingCoeffs[1] * std::pow(dist, 3) +
+                                   _vignettingCoeffs[2] * std::pow(dist, 2) + _vignettingCoeffs[3] * dist + _vignettingCoeffs[4];
+
+                // Apply vignetting to the pixel
+                vignettingData[idx] = static_cast<uint8_t>(std::min(255.0f, colorShadingData[idx] * vignetting));
+                vignettingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, colorShadingData[idx + 1] * vignetting));
+                vignettingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, colorShadingData[idx + 2] * vignetting));
+            }
+        }
+        vignettingImg->update();
+
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
-            outputData[i] = colorShadingData[i];
+            outputData[i] = vignettingData[i];
         outputImg->update();
 
         _shouldReprocess = false;
