@@ -38,6 +38,7 @@ void Project::onLoad() {
     res::create<res::Image>("deg_black_level", info);
     res::create<res::Image>("deg_dead_pixel", info);
     res::create<res::Image>("deg_white_balance", info);
+    res::create<res::Image>("deg_color_shading", info);
     res::create<res::Image>("deg_output", info);
 }
 
@@ -63,6 +64,7 @@ void Project::onUIRender() {
         ImTextureID degBlackLevelImg = (ImTextureID)gfx::getImGuiImage("deg_black_level");
         ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
         ImTextureID degWhiteBalanceImg = (ImTextureID)gfx::getImGuiImage("deg_white_balance");
+        ImTextureID degColorShadingImg = (ImTextureID)gfx::getImGuiImage("deg_color_shading");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         // Plot image degradation stages
@@ -77,6 +79,8 @@ void Project::onUIRender() {
             ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
             ImPlot::PlotImage("White balance error", degWhiteBalanceImg, {x, 0}, {x + 1, ratio});
+            x += 1.1f;
+            ImPlot::PlotImage("Color shading error", degColorShadingImg, {x, 0}, {x + 1, ratio});
             x += 1.3f;
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
@@ -110,6 +114,9 @@ void Project::onAttaLoop() {
 
         res::Image* whiteBalanceImg = res::get<res::Image>("deg_white_balance");
         uint8_t* whiteBalanceData = whiteBalanceImg->getData();
+
+        res::Image* colorShadingImg = res::get<res::Image>("deg_color_shading");
+        uint8_t* colorShadingData = colorShadingImg->getData();
 
         res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
@@ -152,9 +159,42 @@ void Project::onAttaLoop() {
         }
         whiteBalanceImg->update();
 
+        // Color shading error
+        for (uint32_t y = 0; y < w; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                uint32_t idx = (y * w + x) * ch;
+
+                // Compute normalized distance
+                float dist = (atta::vec2(x, y) - atta::vec2(w / 2.0f, h / 2.0f)).length();
+                dist /= (atta::vec2(w / 2.0f, h / 2.0f)).length();
+
+                // Compute color shading indices
+                size_t gainIdx1 = static_cast<size_t>(dist * (COLOR_SHADING_COUNT - 1));
+                size_t gainIdx2 = gainIdx1 + 1;
+                if (gainIdx2 >= COLOR_SHADING_COUNT)
+                    gainIdx2 = COLOR_SHADING_COUNT - 1;
+
+                // Interpolate gain
+                float t = dist * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
+                const atta::vec3& gain1 = _temperatureGainMap[gainIdx1];
+                const atta::vec3& gain2 = _temperatureGainMap[gainIdx2];
+                atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
+
+                uint8_t* inPix = &whiteBalanceData[idx];
+                atta::vec3 pixel(inPix[0], inPix[1], inPix[2]);
+                atta::vec3 shadedPixel = pixel * gain;
+
+                // Save shaded pixel
+                colorShadingData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
+                colorShadingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
+                colorShadingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+            }
+        }
+        colorShadingImg->update();
+
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
-            outputData[i] = whiteBalanceData[i];
+            outputData[i] = colorShadingData[i];
         outputImg->update();
 
         _shouldReprocess = false;
