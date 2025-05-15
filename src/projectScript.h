@@ -91,6 +91,11 @@ class Project : public scr::ProjectScript {
     // A different polynomial will be used for the red and blue channels (green channel will be the reference)
     std::array<float, 2> _chromaticAberrationCoeffsR = {0.006f, 0.003f};   // Chromatic aberration polynomial for the red channel
     std::array<float, 2> _chromaticAberrationCoeffsB = {-0.006f, -0.003f}; // Chromatic aberration polynomial for the blue channel
+
+    //--- Barrel lens distortion ---//
+    // Barrel distortion will be modeled as a simple polynomial that is dependent on the normalized radial distance
+    // D(r)= r + a⋅r^2 + b⋅r^4
+    std::array<float, 2> _barrelDistortionCoeffs = {-0.3f, -0.1f}; // Coefficients for the barrel distortion polynomial (a, b)
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

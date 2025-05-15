@@ -41,6 +41,7 @@ void Project::onLoad() {
     res::create<res::Image>("deg_color_shading", info);
     res::create<res::Image>("deg_vignetting", info);
     res::create<res::Image>("deg_chromatic_aberration", info);
+    res::create<res::Image>("deg_lens", info);
     res::create<res::Image>("deg_output", info);
 }
 
@@ -69,6 +70,7 @@ void Project::onUIRender() {
         ImTextureID degColorShadingImg = (ImTextureID)gfx::getImGuiImage("deg_color_shading");
         ImTextureID degVignettingImg = (ImTextureID)gfx::getImGuiImage("deg_vignetting");
         ImTextureID degChromaticAberrationImg = (ImTextureID)gfx::getImGuiImage("deg_chromatic_aberration");
+        ImTextureID degLensImg = (ImTextureID)gfx::getImGuiImage("deg_lens");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         // Plot image degradation stages
@@ -89,6 +91,9 @@ void Project::onUIRender() {
             ImPlot::PlotImage("Vignetting error", degVignettingImg, {x, 0}, {x + 1, ratio});
             x += 1.1f;
             ImPlot::PlotImage("Chromatic aberration", degChromaticAberrationImg, {x, 0}, {x + 1, ratio});
+            x += 1.1f;
+            ImPlot::PlotImage("Lens distortion", degLensImg, {x, 0}, {x + 1, ratio});
+
             x += 1.3f;
             ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
             ImPlot::EndPlot();
@@ -132,6 +137,9 @@ void Project::onAttaLoop() {
 
         res::Image* chromaticAberrationImg = res::get<res::Image>("deg_chromatic_aberration");
         uint8_t* chromaticAberrationData = chromaticAberrationImg->getData();
+
+        res::Image* lensImg = res::get<res::Image>("deg_lens");
+        uint8_t* lensData = lensImg->getData();
 
         res::Image* outputImg = res::get<res::Image>("deg_output");
         uint8_t* outputData = outputImg->getData();
@@ -262,9 +270,34 @@ void Project::onAttaLoop() {
         }
         chromaticAberrationImg->update();
 
+        // Barrel lens distortion
+        for (uint32_t y = 0; y < h; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                uint32_t idx = (y * w + x) * ch;
+
+                // Compute normalized radial distance
+                atta::vec2 delta = atta::vec2(x, y) - center;
+                float r = delta.length() / center.length();
+                float r2 = r * r;
+                float r4 = r2 * r2;
+
+                // Compute barrel distortion polynomial
+                float lensDist = 1.0f + _barrelDistortionCoeffs[0] * r2 + _barrelDistortionCoeffs[1] * r4;
+                float xDist = center.x + delta.x * lensDist;
+                float yDist = center.y + delta.y * lensDist;
+
+                // Sample distorted coordinate in source image
+                atta::vec3 pixel = bilinearSampling(chromaticAberrationData, w, h, ch, xDist, yDist);
+                lensData[idx + 0] = static_cast<uint8_t>(pixel.x);
+                lensData[idx + 1] = static_cast<uint8_t>(pixel.y);
+                lensData[idx + 2] = static_cast<uint8_t>(pixel.z);
+            }
+        }
+        lensImg->update();
+
         // Output image
         for (uint32_t i = 0; i < w * h * ch; i++)
-            outputData[i] = vignettingData[i];
+            outputData[i] = lensData[i];
         outputImg->update();
 
         _shouldReprocess = false;
