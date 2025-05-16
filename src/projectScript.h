@@ -140,6 +140,12 @@ class Project : public scr::ProjectScript {
     // The color shading correction will be done by applying the inverse of the color shading polynomial to the image.
     // Since color shading is caused by the lens design, the color shading correction profile can be calibrated once per lens design (or once for
     // each camera during factory calibration).
+
+    //--- Lens correction ---//
+    // The lens correction will be done by applying the inverse of the lens distortion polynomial to the image.
+
+    //--- White balance correction ---//
+    // The white balance correction will be done by applying the inverse of the color temperature gain to the image.
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

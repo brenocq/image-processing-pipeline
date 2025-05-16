@@ -367,9 +367,9 @@ void Project::degWhiteBalanceError(const uint8_t* inData, uint8_t* outData, uint
 
         // Apply the temperature gain to each channel
         const atta::vec3 gains = tempToGain(_colorTemperature);
-        outData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
-        outData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
-        outData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
+        outData[i * ch] = static_cast<uint8_t>(std::clamp(r * gains.x, 0.0f, 255.0f));
+        outData[i * ch + 1] = static_cast<uint8_t>(std::clamp(g * gains.y, 0.0f, 255.0f));
+        outData[i * ch + 2] = static_cast<uint8_t>(std::clamp(b * gains.z, 0.0f, 255.0f));
     }
 }
 
@@ -432,9 +432,9 @@ void Project::degColorShadingError(const uint8_t* inData, uint8_t* outData, uint
             atta::vec3 shadedPixel = pixel * gain;
 
             // Save shaded pixel
-            outData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
-            outData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
-            outData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+            outData[idx] = static_cast<uint8_t>(std::clamp(shadedPixel.x, 0.0f, 255.0f));
+            outData[idx + 1] = static_cast<uint8_t>(std::clamp(shadedPixel.y, 0.0f, 255.0f));
+            outData[idx + 2] = static_cast<uint8_t>(std::clamp(shadedPixel.z, 0.0f, 255.0f));
         }
     }
 }
@@ -680,9 +680,9 @@ void Project::proColorShadingCorrection(const uint8_t* inData, uint8_t* outData,
             atta::vec3 shadedPixel = pixel / gain;
 
             // Save shaded pixel
-            outData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
-            outData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
-            outData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+            outData[idx] = static_cast<uint8_t>(std::clamp(shadedPixel.x, 0.0f, 255.0f));
+            outData[idx + 1] = static_cast<uint8_t>(std::clamp(shadedPixel.y, 0.0f, 255.0f));
+            outData[idx + 2] = static_cast<uint8_t>(std::clamp(shadedPixel.z, 0.0f, 255.0f));
         }
     }
 }
@@ -732,9 +732,18 @@ void Project::proLensCorrection(const uint8_t* inData, uint8_t* outData, uint32_
 }
 
 void Project::proWhiteBalanceCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
-    // Copy input data to output data
-    for (uint32_t i = 0; i < w * h * ch; i++)
-        outData[i] = inData[i];
+    for (uint32_t i = 0; i < w * h; i++) {
+        // Get the RGB values for the current pixel
+        uint8_t r = inData[i * ch];
+        uint8_t g = inData[i * ch + 1];
+        uint8_t b = inData[i * ch + 2];
+
+        // Apply the temperature gain to each channel
+        const atta::vec3 gains = tempToGain(_colorTemperature);
+        outData[i * ch] = static_cast<uint8_t>(std::clamp(r / gains.x, 0.0f, 255.0f));
+        outData[i * ch + 1] = static_cast<uint8_t>(std::clamp(g / gains.y, 0.0f, 255.0f));
+        outData[i * ch + 2] = static_cast<uint8_t>(std::clamp(b / gains.z, 0.0f, 255.0f));
+    }
 }
 
 atta::vec3 Project::tempToGain(float temp) {
