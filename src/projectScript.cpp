@@ -188,9 +188,9 @@ void Project::onUIRender() {
             float y = 0.0f;
 
             plotImage("Reference image", refImg, x, y, 1.0f, ratio);
-            x += 1.5f;
+            x += 1.05f;
             plotImage("Degraded image", degOutputImg, x, y, 1.0f, ratio);
-            x += 1.5f;
+            x += 1.05f;
             plotImage("Processed image", proOutputImg, x, y, 1.0f, ratio);
 
             // Plot degradation stages
@@ -688,9 +688,47 @@ void Project::proColorShadingCorrection(const uint8_t* inData, uint8_t* outData,
 }
 
 void Project::proLensCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
-    // Copy input data to output data
-    for (uint32_t i = 0; i < w * h * ch; i++)
-        outData[i] = inData[i];
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            atta::vec2 delta = atta::vec2(x, y) - center;
+            float r = delta.length() / center.length();
+            float r2 = r * r;
+            float r3 = r2 * r;
+            float r4 = r2 * r2;
+
+            // Compute inverse barrel distortion polynomial
+            float denom = _barrelDistortionCoeffs[0] + _barrelDistortionCoeffs[1] * r2 + _barrelDistortionCoeffs[2] * r4;
+            if (std::abs(denom) < 1e-3f)
+                denom = 1e-3f; // Avoid division by zero
+            float lensR = r / denom;
+
+            // Compute angle
+            float angle = 0.0f;
+            if (delta.squareLength() > 1e-5f)
+                angle = std::atan2(delta.y, delta.x); // Avoid division by zero at the exact center
+
+            // Compute source pixel coordinates
+            float xDist = center.x + lensR * std::cos(angle) * center.length();
+            float yDist = center.y + lensR * std::sin(angle) * center.length();
+
+            if (xDist < 0.0f || xDist >= w || yDist < 0.0f || yDist >= h) {
+                // Out of bounds, set to black
+                outData[idx + 0] = 0;
+                outData[idx + 1] = 0;
+                outData[idx + 2] = 0;
+                continue;
+            }
+
+            // Sample distorted coordinate in source image
+            outData[idx + 0] = static_cast<uint8_t>(bilinearSampling(inData, w, h, ch, xDist, yDist).x);
+            outData[idx + 1] = static_cast<uint8_t>(bilinearSampling(inData, w, h, ch, xDist, yDist).y);
+            outData[idx + 2] = static_cast<uint8_t>(bilinearSampling(inData, w, h, ch, xDist, yDist).z);
+        }
+    }
 }
 
 void Project::proWhiteBalanceCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
