@@ -21,10 +21,19 @@ class Project : public scr::ProjectScript {
     int _selectedImage = 1;
     bool _shouldReprocess = true;
 
+    // Degradation pipeline
+    void degWhiteBalanceError(const uint8_t* refData, uint8_t* whiteBalanceData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degLensDistortion(const uint8_t* refData, uint8_t* lensData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degColorShadingError(const uint8_t* refData, uint8_t* colorShadingData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degChromaticAberrationError(const uint8_t* refData, uint8_t* chromaticAberrationData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degVignettingError(const uint8_t* refData, uint8_t* vignettingData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degBlackLevelOffset(const uint8_t* refData, uint8_t* blackLevelData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degDeadPixelInjection(const uint8_t* refData, uint8_t* deadPixelData, uint32_t w, uint32_t h, uint32_t ch);
+
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
     static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
 
-    //----------  Image degradation pipeline ----------//
+    //----------  Image degradation pipeline setup ----------//
     //--- White balance error ---//
     float _colorTemperature = 3500.0f; // Temperature in Kelvin
 
@@ -85,6 +94,16 @@ class Project : public scr::ProjectScript {
 
     //--- Dead pixel injection ---//
     float _percentDeadPixels = 0.0001f; // 0.01% of dead pixels
+
+    //---------- Image processing pipeline setup ----------//
+    //--- Dead pixel correction ---//
+    // There can be an offline process to detect pixels in which the intensity does not change over multiple frames, or that significantly deviates
+    // from the neighboring pixels. Ideally, this should not be done for every frame, but during the calibration process or with a few selected
+    // frames.
+    //
+    // A list of dead pixels should be generated during the dead pixel calibration process. The stored list can later be used during the dead pixel
+    // correction process, which will interpolate the values of the neighboring pixels.
+    std::vector<uint32_t> _deadPixels; // List of dead pixels in the image (index in the image buffer)
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

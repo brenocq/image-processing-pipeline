@@ -238,154 +238,31 @@ void Project::onAttaLoop() {
 
         //---------- Image degradation pipeline ----------//
         // White balance error
-        for (uint32_t i = 0; i < w * h; i++) {
-            // Get the RGB values for the current pixel
-            uint8_t r = refData[i * ch];
-            uint8_t g = refData[i * ch + 1];
-            uint8_t b = refData[i * ch + 2];
-
-            // Apply the temperature gain to each channel
-            const atta::vec3 gains = tempToGain(_colorTemperature);
-            whiteBalanceData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
-            whiteBalanceData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
-            whiteBalanceData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
-        }
+        degWhiteBalanceError(refData, whiteBalanceData, w, h, ch);
         whiteBalanceImg->update();
 
         // Barrel lens distortion
-        for (uint32_t y = 0; y < h; y++) {
-            for (uint32_t x = 0; x < w; x++) {
-                uint32_t idx = (y * w + x) * ch;
-
-                // Compute normalized radial distance
-                atta::vec2 delta = atta::vec2(x, y) - center;
-                float r = delta.length() / center.length();
-                float r2 = r * r;
-                float r4 = r2 * r2;
-
-                // Compute barrel distortion polynomial (source radius)
-                float lensR = r * (_barrelDistortionCoeffs[0] + _barrelDistortionCoeffs[1] * r2 + _barrelDistortionCoeffs[2] * r4);
-
-                // Compute angle
-                float angle = 0.0f;
-                if (delta.squareLength() > 1e-5f)
-                    angle = std::atan2(delta.y, delta.x); // Avoid division by zero at the exact center
-
-                // Compute source pixel coordinates
-                float xDist = center.x + lensR * std::cos(angle) * center.length();
-                float yDist = center.y + lensR * std::sin(angle) * center.length();
-
-                // Sample distorted coordinate in source image
-                atta::vec3 pixel = bilinearSampling(whiteBalanceData, w, h, ch, xDist, yDist);
-                lensData[idx + 0] = static_cast<uint8_t>(pixel.x);
-                lensData[idx + 1] = static_cast<uint8_t>(pixel.y);
-                lensData[idx + 2] = static_cast<uint8_t>(pixel.z);
-            }
-        }
+        degLensDistortion(whiteBalanceData, lensData, w, h, ch);
         lensImg->update();
 
         // Color shading error
-        for (uint32_t y = 0; y < h; y++) {
-            for (uint32_t x = 0; x < w; x++) {
-                uint32_t idx = (y * w + x) * ch;
-
-                // Compute normalized radial distance
-                float r = (atta::vec2(x, y) - center).length() / center.length();
-
-                // Compute color shading indices
-                size_t gainIdx1 = static_cast<size_t>(r * (COLOR_SHADING_COUNT - 1));
-                size_t gainIdx2 = gainIdx1 + 1;
-                if (gainIdx2 >= COLOR_SHADING_COUNT)
-                    gainIdx2 = COLOR_SHADING_COUNT - 1;
-
-                // Interpolate gain
-                float t = r * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
-                const atta::vec3& gain1 = _colorShadingError[gainIdx1];
-                const atta::vec3& gain2 = _colorShadingError[gainIdx2];
-                atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
-
-                uint8_t* inPix = &lensData[idx];
-                atta::vec3 pixel(inPix[0], inPix[1], inPix[2]);
-                atta::vec3 shadedPixel = pixel * gain;
-
-                // Save shaded pixel
-                colorShadingData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
-                colorShadingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
-                colorShadingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
-            }
-        }
+        degColorShadingError(lensData, colorShadingData, w, h, ch);
         colorShadingImg->update();
 
         // Chromatic aberration
-        for (uint32_t y = 0; y < h; y++) {
-            for (uint32_t x = 0; x < w; x++) {
-                uint32_t idx = (y * w + x) * ch;
-                // Compute normalized radial distance
-                atta::vec2 delta = atta::vec2(x, y) - center;
-                float r = delta.length() / center.length();
-                float r2 = r * r;
-                float r3 = r2 * r;
-
-                // Calculate chromatic aberration displacement for Red channel
-                float displacementR = (_chromaticAberrationCoeffsR[0] * r2 + _chromaticAberrationCoeffsR[1] * r3);
-                float sxR_float = center.x + delta.x * (1.0f + displacementR);
-                float syR_float = center.y + delta.y * (1.0f + displacementR);
-
-                // Calculate chromatic aberration displacement for Blue channel
-                float displacementB = (_chromaticAberrationCoeffsB[0] * r2 + _chromaticAberrationCoeffsB[1] * r3);
-                float sxB_float = center.x + delta.x * (1.0f + displacementB);
-                float syB_float = center.y + delta.y * (1.0f + displacementB);
-
-                // Sample from vignettingData (nearest neighbor sampling)
-                // chromaticAberrationData[idx + 0] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxR_float, syR_float).x;
-                // chromaticAberrationData[idx + 1] = vignettingData[(y * w + x) * ch + 1];
-                // chromaticAberrationData[idx + 2] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxB_float, syB_float).z;
-
-                // Sample from vignettingData (bilinear sampling)
-                chromaticAberrationData[idx + 0] = (uint8_t)bilinearSampling(colorShadingData, w, h, ch, sxR_float, syR_float).x;
-                chromaticAberrationData[idx + 1] = colorShadingData[(y * w + x) * ch + 1];
-                chromaticAberrationData[idx + 2] = (uint8_t)bilinearSampling(colorShadingData, w, h, ch, sxB_float, syB_float).z;
-            }
-        }
+        degChromaticAberrationError(colorShadingData, chromaticAberrationData, w, h, ch);
         chromaticAberrationImg->update();
 
         // Vignetting error
-        for (uint32_t y = 0; y < h; y++) {
-            for (uint32_t x = 0; x < w; x++) {
-                uint32_t idx = (y * w + x) * ch;
-
-                // Compute normalized radial distance
-                float r = (atta::vec2(x, y) - center).length() / center.length();
-                float r2 = r * r;
-                float r3 = r2 * r;
-                float r4 = r2 * r2;
-
-                // Compute vignetting polynomial
-                float vignetting = _vignettingCoeffs[0] * r4 + _vignettingCoeffs[1] * r3 + _vignettingCoeffs[2] * r2 + _vignettingCoeffs[3] * r +
-                                   _vignettingCoeffs[4];
-
-                // Apply vignetting to the pixel
-                vignettingData[idx] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx] * vignetting, 0.0f, 255.0f));
-                vignettingData[idx + 1] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx + 1] * vignetting, 0.0f, 255.0f));
-                vignettingData[idx + 2] = static_cast<uint8_t>(std::clamp(chromaticAberrationData[idx + 2] * vignetting, 0.0f, 255.0f));
-            }
-        }
+        degVignettingError(chromaticAberrationData, vignettingData, w, h, ch);
         vignettingImg->update();
 
         // Black level offset
-        for (uint32_t i = 0; i < w * h * ch; i++) {
-            if (uint32_t(vignettingData[i]) + _blackLevelOffset >= 255)
-                blackLevelData[i] = 255;
-            else
-                blackLevelData[i] = vignettingData[i] + _blackLevelOffset;
-        }
+        degBlackLevelOffset(vignettingData, blackLevelData, w, h, ch);
         blackLevelImg->update();
 
-        // Dead pixel injection (randomly set a channel to 0 - simulate photosite failure)
-        std::mt19937 gen(42);                           // Random number generator
-        std::uniform_real_distribution<> dis(0.0, 1.0); // Uniform distribution in [0, 1]
-        for (uint32_t i = 0; i < w * h * ch; i++)
-            deadPixelData[i] = dis(gen) < _percentDeadPixels ? 0 : blackLevelData[i];
+        // Dead pixel injection
+        degDeadPixelInjection(blackLevelData, deadPixelData, w, h, ch);
         deadPixelImg->update();
 
         // Output image
@@ -394,6 +271,171 @@ void Project::onAttaLoop() {
         outputImg->update();
 
         _shouldReprocess = false;
+    }
+}
+
+void Project::degWhiteBalanceError(const uint8_t* refData, uint8_t* whiteBalanceData, uint32_t w, uint32_t h, uint32_t ch) const {
+    for (uint32_t i = 0; i < w * h; i++) {
+        // Get the RGB values for the current pixel
+        uint8_t r = refData[i * ch];
+        uint8_t g = refData[i * ch + 1];
+        uint8_t b = refData[i * ch + 2];
+
+        // Apply the temperature gain to each channel
+        const atta::vec3 gains = tempToGain(_colorTemperature);
+        whiteBalanceData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
+        whiteBalanceData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
+        whiteBalanceData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
+    }
+}
+
+void Project::degLensDistortion(const uint8_t* refData, uint8_t* lensData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            atta::vec2 delta = atta::vec2(x, y) - center;
+            float r = delta.length() / center.length();
+            float r2 = r * r;
+            float r4 = r2 * r2;
+
+            // Compute barrel distortion polynomial (source radius)
+            float lensR = r * (_barrelDistortionCoeffs[0] + _barrelDistortionCoeffs[1] * r2 + _barrelDistortionCoeffs[2] * r4);
+
+            // Compute angle
+            float angle = 0.0f;
+            if (delta.squareLength() > 1e-5f)
+                angle = std::atan2(delta.y, delta.x); // Avoid division by zero at the exact center
+
+            // Compute source pixel coordinates
+            float xDist = center.x + lensR * std::cos(angle) * center.length();
+            float yDist = center.y + lensR * std::sin(angle) * center.length();
+
+            // Sample distorted coordinate in source image
+            atta::vec3 pixel = bilinearSampling(refData, w, h, ch, xDist, yDist);
+            lensData[idx + 0] = static_cast<uint8_t>(pixel.x);
+            lensData[idx + 1] = static_cast<uint8_t>(pixel.y);
+            lensData[idx + 2] = static_cast<uint8_t>(pixel.z);
+        }
+    }
+}
+
+void Project::degColorShadingError(const uint8_t* refData, uint8_t* colorShadingData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            float r = (atta::vec2(x, y) - center).length() / center.length();
+
+            // Compute color shading indices
+            uint32_t gainIdx1 = static_cast<uint32_t>(r * (COLOR_SHADING_COUNT - 1));
+            uint32_t gainIdx2 = gainIdx1 + 1;
+            if (gainIdx2 >= COLOR_SHADING_COUNT)
+                gainIdx2 = COLOR_SHADING_COUNT - 1;
+
+            // Interpolate gain
+            float t = r * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
+            const atta::vec3& gain1 = _colorShadingError[gainIdx1];
+            const atta::vec3& gain2 = _colorShadingError[gainIdx2];
+            atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
+
+            const uint8_t* inPix = &refData[idx];
+            atta::vec3 pixel(inPix[0], inPix[1], inPix[2]);
+            atta::vec3 shadedPixel = pixel * gain;
+
+            // Save shaded pixel
+            colorShadingData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
+            colorShadingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
+            colorShadingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+        }
+    }
+}
+
+void Project::degChromaticAberrationError(const uint8_t* refData, uint8_t* chromaticAberrationData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+            // Compute normalized radial distance
+            atta::vec2 delta = atta::vec2(x, y) - center;
+            float r = delta.length() / center.length();
+            float r2 = r * r;
+            float r3 = r2 * r;
+
+            // Calculate chromatic aberration displacement for Red channel
+            float displacementR = (_chromaticAberrationCoeffsR[0] * r2 + _chromaticAberrationCoeffsR[1] * r3);
+            float sxR_float = center.x + delta.x * (1.0f + displacementR);
+            float syR_float = center.y + delta.y * (1.0f + displacementR);
+
+            // Calculate chromatic aberration displacement for Blue channel
+            float displacementB = (_chromaticAberrationCoeffsB[0] * r2 + _chromaticAberrationCoeffsB[1] * r3);
+            float sxB_float = center.x + delta.x * (1.0f + displacementB);
+            float syB_float = center.y + delta.y * (1.0f + displacementB);
+
+            // Sample from vignettingData (nearest neighbor sampling)
+            // chromaticAberrationData[idx + 0] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxR_float, syR_float).x;
+            // chromaticAberrationData[idx + 1] = vignettingData[(y * w + x) * ch + 1];
+            // chromaticAberrationData[idx + 2] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxB_float, syB_float).z;
+
+            // Sample from vignettingData (bilinear sampling)
+            chromaticAberrationData[idx + 0] = (uint8_t)bilinearSampling(refData, w, h, ch, sxR_float, syR_float).x;
+            chromaticAberrationData[idx + 1] = refData[(y * w + x) * ch + 1];
+            chromaticAberrationData[idx + 2] = (uint8_t)bilinearSampling(refData, w, h, ch, sxB_float, syB_float).z;
+        }
+    }
+}
+
+void Project::degVignettingError(const uint8_t* refData, uint8_t* vignettingData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            float r = (atta::vec2(x, y) - center).length() / center.length();
+            float r2 = r * r;
+            float r3 = r2 * r;
+            float r4 = r2 * r2;
+
+            // Compute vignetting polynomial
+            float vignetting =
+                _vignettingCoeffs[0] * r4 + _vignettingCoeffs[1] * r3 + _vignettingCoeffs[2] * r2 + _vignettingCoeffs[3] * r + _vignettingCoeffs[4];
+
+            // Apply vignetting to the pixel
+            vignettingData[idx] = static_cast<uint8_t>(std::clamp(refData[idx] * vignetting, 0.0f, 255.0f));
+            vignettingData[idx + 1] = static_cast<uint8_t>(std::clamp(refData[idx + 1] * vignetting, 0.0f, 255.0f));
+            vignettingData[idx + 2] = static_cast<uint8_t>(std::clamp(refData[idx + 2] * vignetting, 0.0f, 255.0f));
+        }
+    }
+}
+
+void Project::degBlackLevelOffset(const uint8_t* refData, uint8_t* blackLevelData, uint32_t w, uint32_t h, uint32_t ch) const {
+    for (uint32_t i = 0; i < w * h * ch; i++) {
+        if (uint32_t(refData[i]) + _blackLevelOffset >= 255)
+            blackLevelData[i] = 255;
+        else
+            blackLevelData[i] = refData[i] + _blackLevelOffset;
+    }
+}
+
+void Project::degDeadPixelInjection(const uint8_t* refData, uint8_t* deadPixelData, uint32_t w, uint32_t h, uint32_t ch) {
+    // Dead pixel injection (randomly set a channel to 0 - simulate photosite failure)
+    std::mt19937 gen(42);                           // Random number generator
+    std::uniform_real_distribution<> dis(0.0, 1.0); // Uniform distribution in [0, 1]
+
+    _deadPixels.clear();
+    for (uint32_t i = 0; i < w * h * ch; i++) {
+        bool isDeadPixel = dis(gen) < _percentDeadPixels;
+        if (isDeadPixel) {
+            deadPixelData[i] = 0;
+            _deadPixels.push_back(i); // This list should be generated during calibration in practice in practice
+        } else {
+            deadPixelData[i] = refData[i];
+        }
     }
 }
 
@@ -407,8 +449,8 @@ atta::vec3 Project::tempToGain(float temp) {
     // Calculate the fractional index in the table
     float fractionalIndex = (temp - TEMPERATURE_GAIN_MIN) / TEMPERATURE_GAIN_STEP;
 
-    size_t index1 = static_cast<size_t>(fractionalIndex);
-    size_t index2 = index1 + 1;
+    uint32_t index1 = static_cast<uint32_t>(fractionalIndex);
+    uint32_t index2 = index1 + 1;
 
     // Basic bounds check (should be mostly covered by temp clamping)
     if (index1 >= TEMPERATURE_GAIN_COUNT)
