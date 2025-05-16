@@ -57,6 +57,15 @@ void Project::onLoad() {
     res::create<res::Image>("deg_black_level", info);
     res::create<res::Image>("deg_dead_pixel", info);
     res::create<res::Image>("deg_output", info);
+
+    // Image processing pipeline
+    res::create<res::Image>("pro_dead_pixel", info);
+    res::create<res::Image>("pro_output", info);
+}
+
+void plotImage(const char* label, ImTextureID img, float x, float y, float w, float h) {
+    ImPlot::PlotImage(label, img, {x, y}, {x + w, y + h});
+    ImPlot::PlotText(label, x + 0.5f, y + h + 0.05f);
 }
 
 void Project::onUIRender() {
@@ -156,38 +165,47 @@ void Project::onUIRender() {
         ImTextureID degDeadPixelImg = (ImTextureID)gfx::getImGuiImage("deg_dead_pixel");
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
+        ImTextureID proDeadPixelImg = (ImTextureID)gfx::getImGuiImage("pro_dead_pixel");
+        ImTextureID proOutputImg = (ImTextureID)gfx::getImGuiImage("pro_output");
+
         // Plot image degradation stages
         const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoTickLabels;
         if (ImPlot::BeginPlot("Image pipeline", {-1, 350}, ImPlotFlags_Equal)) {
             ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             float x = 0.0f;
-            ImPlot::PlotImage("Reference image", refImg, {x, 0}, {x + 1, ratio});
-            ImPlot::PlotText("Reference image", x + 0.5f, ratio + 0.05f);
-            x += 1.1f;
-            ImPlot::PlotImage("White balance error", degWhiteBalanceImg, {x, 0}, {x + 1, ratio});
-            ImPlot::PlotText("White balance error", x + 0.5f, ratio + 0.05f);
-            x += 1.1f;
-            ImPlot::PlotText("Lens distortion", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Lens distortion", degLensImg, {x, 0}, {x + 1, ratio});
-            x += 1.1f;
-            ImPlot::PlotText("Color shading error", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Color shading error", degColorShadingImg, {x, 0}, {x + 1, ratio});
-            x += 1.1f;
-            ImPlot::PlotText("Chromatic aberration", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Chromatic aberration", degChromaticAberrationImg, {x, 0}, {x + 1, ratio});
-            x += 1.1f;
-            ImPlot::PlotText("Vignetting", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Vignetting", degVignettingImg, {x, 0}, {x + 1, ratio});
-            x += 1.1f;
-            ImPlot::PlotText("Black level offset", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Black level offset", degBlackLevelImg, {x, 0}, {x + 1, ratio});
-            x += 1.1f;
-            ImPlot::PlotText("Dead pixel injection", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Dead pixel injection", degDeadPixelImg, {x, 0}, {x + 1, ratio});
+            float y = 0.0f;
 
-            x += 1.3f;
-            ImPlot::PlotText("Degraded image", x + 0.5f, ratio + 0.05f);
-            ImPlot::PlotImage("Degraded image", degOutputImg, {x, 0}, {x + 1, ratio});
+            plotImage("Reference image", refImg, x, y, 1.0f, ratio);
+            x += 1.5f;
+            plotImage("Degraded image", degOutputImg, x, y, 1.0f, ratio);
+            x += 1.5f;
+            plotImage("Processed image", proOutputImg, x, y, 1.0f, ratio);
+
+            // Plot degradation stages
+            y -= 1.5f;
+            x = 0.0f;
+
+            plotImage("White balance error", degWhiteBalanceImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Lens distortion", degLensImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Color shading error", degColorShadingImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Chromatic aberration", degChromaticAberrationImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Vignetting", degVignettingImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Black level offset", degBlackLevelImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Dead pixel injection", degDeadPixelImg, x, y, 1.0f, ratio);
+
+            // Plot image processing stages
+            y -= 1.5f;
+            x = 0.0f;
+
+            plotImage("Dead pixel correction", proDeadPixelImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+
             ImPlot::EndPlot();
         }
     }
@@ -206,30 +224,6 @@ void Project::onAttaLoop() {
         atta::vec2 center(w / 2.0f, h / 2.0f);
         uint32_t ch = refImg->getChannels();
 
-        res::Image* whiteBalanceImg = res::get<res::Image>("deg_white_balance");
-        uint8_t* whiteBalanceData = whiteBalanceImg->getData();
-
-        res::Image* lensImg = res::get<res::Image>("deg_lens");
-        uint8_t* lensData = lensImg->getData();
-
-        res::Image* colorShadingImg = res::get<res::Image>("deg_color_shading");
-        uint8_t* colorShadingData = colorShadingImg->getData();
-
-        res::Image* chromaticAberrationImg = res::get<res::Image>("deg_chromatic_aberration");
-        uint8_t* chromaticAberrationData = chromaticAberrationImg->getData();
-
-        res::Image* vignettingImg = res::get<res::Image>("deg_vignetting");
-        uint8_t* vignettingData = vignettingImg->getData();
-
-        res::Image* blackLevelImg = res::get<res::Image>("deg_black_level");
-        uint8_t* blackLevelData = blackLevelImg->getData();
-
-        res::Image* deadPixelImg = res::get<res::Image>("deg_dead_pixel");
-        uint8_t* deadPixelData = deadPixelImg->getData();
-
-        res::Image* outputImg = res::get<res::Image>("deg_output");
-        uint8_t* outputData = outputImg->getData();
-
         // Load test image
         // refImg->load(testImgPath);
         // Resize images
@@ -238,37 +232,67 @@ void Project::onAttaLoop() {
 
         //---------- Image degradation pipeline ----------//
         // White balance error
+        res::Image* whiteBalanceImg = res::get<res::Image>("deg_white_balance");
+        uint8_t* whiteBalanceData = whiteBalanceImg->getData();
         degWhiteBalanceError(refData, whiteBalanceData, w, h, ch);
         whiteBalanceImg->update();
 
         // Barrel lens distortion
+        res::Image* lensImg = res::get<res::Image>("deg_lens");
+        uint8_t* lensData = lensImg->getData();
         degLensDistortion(whiteBalanceData, lensData, w, h, ch);
         lensImg->update();
 
         // Color shading error
+        res::Image* colorShadingImg = res::get<res::Image>("deg_color_shading");
+        uint8_t* colorShadingData = colorShadingImg->getData();
         degColorShadingError(lensData, colorShadingData, w, h, ch);
         colorShadingImg->update();
 
         // Chromatic aberration
+        res::Image* chromaticAberrationImg = res::get<res::Image>("deg_chromatic_aberration");
+        uint8_t* chromaticAberrationData = chromaticAberrationImg->getData();
         degChromaticAberrationError(colorShadingData, chromaticAberrationData, w, h, ch);
         chromaticAberrationImg->update();
 
         // Vignetting error
+        res::Image* vignettingImg = res::get<res::Image>("deg_vignetting");
+        uint8_t* vignettingData = vignettingImg->getData();
         degVignettingError(chromaticAberrationData, vignettingData, w, h, ch);
         vignettingImg->update();
 
         // Black level offset
+        res::Image* blackLevelImg = res::get<res::Image>("deg_black_level");
+        uint8_t* blackLevelData = blackLevelImg->getData();
         degBlackLevelOffset(vignettingData, blackLevelData, w, h, ch);
         blackLevelImg->update();
 
         // Dead pixel injection
+        res::Image* deadPixelImg = res::get<res::Image>("deg_dead_pixel");
+        uint8_t* deadPixelData = deadPixelImg->getData();
         degDeadPixelInjection(blackLevelData, deadPixelData, w, h, ch);
         deadPixelImg->update();
 
-        // Output image
+        // Degradation output image
+        res::Image* outputImg = res::get<res::Image>("deg_output");
+        uint8_t* outputData = outputImg->getData();
         for (uint32_t i = 0; i < w * h * ch; i++)
             outputData[i] = deadPixelData[i];
         outputImg->update();
+
+        //---------- Image processing pipeline ----------//
+        // Dead pixel correction
+        res::Image* proDeadPixelImg = res::get<res::Image>("pro_dead_pixel");
+        uint8_t* proDeadPixelData = proDeadPixelImg->getData();
+        proDeadPixelCorrection(outputData, proDeadPixelData, w, h, ch);
+        proDeadPixelImg->update();
+
+        // Processed output
+        res::Image* proOutputImg = res::get<res::Image>("pro_output");
+        uint8_t* proOutputData = proOutputImg->getData();
+        for (uint32_t i = 0; i < w * h * ch; i++)
+            proOutputData[i] = proDeadPixelData[i];
+        proOutputImg->update();
 
         _shouldReprocess = false;
     }
@@ -440,6 +464,10 @@ void Project::degDeadPixelInjection(const uint8_t* inData, uint8_t* outData, uin
 }
 
 void Project::proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Copy input data to output data
+    for (uint32_t i = 0; i < w * h * ch; i++)
+        outData[i] = inData[i];
+
     // Dead pixel correction (nearest neighbor sampling)
     for (uint32_t i = 0; i < _deadPixels.size(); i++) {
         uint32_t idx = _deadPixels[i];
