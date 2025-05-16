@@ -302,11 +302,17 @@ void Project::onAttaLoop() {
         proBlackLevelCorrection(proDeadPixelData, proBlackLevelData, w, h, ch);
         proBlackLevelImg->update();
 
+        // Vignetting correction
+        res::Image* proVignettingImg = res::get<res::Image>("pro_vignetting");
+        uint8_t* proVignettingData = proVignettingImg->getData();
+        proVignettingCorrection(proBlackLevelData, proVignettingData, w, h, ch);
+        proVignettingImg->update();
+
         // Processed output
         res::Image* proOutputImg = res::get<res::Image>("pro_output");
         uint8_t* proOutputData = proOutputImg->getData();
         for (uint32_t i = 0; i < w * h * ch; i++)
-            proOutputData[i] = proBlackLevelData[i];
+            proOutputData[i] = proVignettingData[i];
         proOutputImg->update();
 
         _shouldReprocess = false;
@@ -548,6 +554,30 @@ void Project::proBlackLevelCorrection(const uint8_t* inData, uint8_t* outData, u
             outData[i] -= blackLevel;
         else
             outData[i] = 0;
+    }
+}
+
+void Project::proVignettingCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            float r = (atta::vec2(x, y) - center).length() / center.length();
+            float r2 = r * r;
+            float r3 = r2 * r;
+            float r4 = r2 * r2;
+
+            // Compute vignetting polynomial
+            float vignetting =
+                _vignettingCoeffs[0] * r4 + _vignettingCoeffs[1] * r3 + _vignettingCoeffs[2] * r2 + _vignettingCoeffs[3] * r + _vignettingCoeffs[4];
+
+            // Apply inverse vignetting to the pixel
+            outData[idx] = static_cast<uint8_t>(std::clamp(inData[idx] / vignetting, 0.0f, 255.0f));
+            outData[idx + 1] = static_cast<uint8_t>(std::clamp(inData[idx + 1] / vignetting, 0.0f, 255.0f));
+            outData[idx + 2] = static_cast<uint8_t>(std::clamp(inData[idx + 2] / vignetting, 0.0f, 255.0f));
+        }
     }
 }
 

@@ -33,6 +33,7 @@ class Project : public scr::ProjectScript {
     // Image processing pipeline
     void proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
     void proBlackLevelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void proVignettingCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
 
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
     static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
@@ -120,6 +121,9 @@ class Project : public scr::ProjectScript {
     // For the sake of this implementation, we'll assume that the camera sensor has 10 optical black pixels. Gaussian noise will be
     // added to the black pixels during the degradation stage.
     std::array<atta::vec3, 10> _obPixels;
+
+    //--- Vignetting correction ---//
+    // The vignetting correction will be done by applying the inverse of the vignetting polynomial to the image
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)
