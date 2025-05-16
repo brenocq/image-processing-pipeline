@@ -27,11 +27,12 @@ class Project : public scr::ProjectScript {
     void degColorShadingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
     void degChromaticAberrationError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
     void degVignettingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch);
     void degDeadPixelInjection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch);
 
     // Image processing pipeline
     void proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void proBlackLevelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
 
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
     static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
@@ -107,6 +108,18 @@ class Project : public scr::ProjectScript {
     // A list of dead pixels should be generated during the dead pixel calibration process. The stored list can later be used during the dead pixel
     // correction process, which will interpolate the values of the neighboring pixels.
     std::vector<uint32_t> _deadPixels; // List of dead pixels in the image (index in the image buffer)
+
+    //--- Black level correction ---//
+    // The image sensor may have optical black (OB) pixels, in this case, we can just subtract the average value of the optical black pixels from the
+    // image
+    //
+    // If that is not possible, it is also possible to perform calibration by measuring the average value of the pixels in a dark scene (or with
+    // the lens cap on). Note that this will be less accurate over time because the black level may change depending on sensor temperature and
+    // exposure time.
+    //
+    // For the sake of this implementation, we'll assume that the camera sensor has 10 optical black pixels. Gaussian noise will be
+    // added to the black pixels during the degradation stage.
+    std::array<atta::vec3, 10> _obPixels;
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

@@ -60,6 +60,12 @@ void Project::onLoad() {
 
     // Image processing pipeline
     res::create<res::Image>("pro_dead_pixel", info);
+    res::create<res::Image>("pro_black_level", info);
+    res::create<res::Image>("pro_vignetting", info);
+    res::create<res::Image>("pro_chromatic_aberration", info);
+    res::create<res::Image>("pro_color_shading", info);
+    res::create<res::Image>("pro_lens", info);
+    res::create<res::Image>("pro_white_balance", info);
     res::create<res::Image>("pro_output", info);
 }
 
@@ -166,6 +172,7 @@ void Project::onUIRender() {
         ImTextureID degOutputImg = (ImTextureID)gfx::getImGuiImage("deg_output");
 
         ImTextureID proDeadPixelImg = (ImTextureID)gfx::getImGuiImage("pro_dead_pixel");
+        ImTextureID proBlackLevelImg = (ImTextureID)gfx::getImGuiImage("pro_black_level");
         ImTextureID proOutputImg = (ImTextureID)gfx::getImGuiImage("pro_output");
 
         // Plot image degradation stages
@@ -204,6 +211,8 @@ void Project::onUIRender() {
             x = 0.0f;
 
             plotImage("Dead pixel correction", proDeadPixelImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Black level correction", proBlackLevelImg, x, y, 1.0f, ratio);
             x += 1.1f;
 
             ImPlot::EndPlot();
@@ -287,11 +296,17 @@ void Project::onAttaLoop() {
         proDeadPixelCorrection(outputData, proDeadPixelData, w, h, ch);
         proDeadPixelImg->update();
 
+        // Black level correction
+        res::Image* proBlackLevelImg = res::get<res::Image>("pro_black_level");
+        uint8_t* proBlackLevelData = proBlackLevelImg->getData();
+        proBlackLevelCorrection(proDeadPixelData, proBlackLevelData, w, h, ch);
+        proBlackLevelImg->update();
+
         // Processed output
         res::Image* proOutputImg = res::get<res::Image>("pro_output");
         uint8_t* proOutputData = proOutputImg->getData();
         for (uint32_t i = 0; i < w * h * ch; i++)
-            proOutputData[i] = proDeadPixelData[i];
+            proOutputData[i] = proBlackLevelData[i];
         proOutputImg->update();
 
         _shouldReprocess = false;
@@ -437,12 +452,27 @@ void Project::degVignettingError(const uint8_t* inData, uint8_t* outData, uint32
     }
 }
 
-void Project::degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) {
+    // Apply black level offset
     for (uint32_t i = 0; i < w * h * ch; i++) {
         if (uint32_t(inData[i]) + _blackLevelOffset >= 255)
             outData[i] = 255;
         else
             outData[i] = inData[i] + _blackLevelOffset;
+    }
+
+    // Generate optical black pixel measurements
+    std::default_random_engine gen(42);
+    std::normal_distribution<float> dist(0.0f, 5.0f); // Gaussian distribution with mean 0 and stddev 5.0
+    for (size_t i = 0; i < _obPixels.size(); i++) {
+        // Generate perfect measurement
+        atta::vec3 obPixel(_blackLevelOffset, _blackLevelOffset, _blackLevelOffset);
+
+        // Add Gaussian noise to each channel
+        for (uint32_t c = 0; c < ch; c++)
+            obPixel[c] = std::round(std::clamp(obPixel[c] + dist(gen), 0.0f, 255.0f));
+
+        _obPixels[i] = obPixel;
     }
 }
 
@@ -494,6 +524,30 @@ void Project::proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, ui
 
         // Average of 4 neighbors
         outData[idx] = sum / count;
+    }
+}
+
+void Project::proBlackLevelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Copy input data to output data
+    for (uint32_t i = 0; i < w * h * ch; i++)
+        outData[i] = inData[i];
+
+    // Compute black level from optical black pixels
+    uint32_t blackLevelSum = 0;
+    for (size_t i = 0; i < _obPixels.size(); i++) {
+        // Get the optical black pixel value
+        const atta::vec3& obPixel = _obPixels[i];
+        // Sum channel values
+        blackLevelSum += static_cast<uint32_t>(obPixel.x + obPixel.y + obPixel.z);
+    }
+    uint8_t blackLevel = blackLevelSum / (3 * _obPixels.size());
+
+    // Black level correction
+    for (uint32_t i = 0; i < w * h * ch; i++) {
+        if (outData[i] >= blackLevel)
+            outData[i] -= blackLevel;
+        else
+            outData[i] = 0;
     }
 }
 
