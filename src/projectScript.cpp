@@ -173,6 +173,11 @@ void Project::onUIRender() {
 
         ImTextureID proDeadPixelImg = (ImTextureID)gfx::getImGuiImage("pro_dead_pixel");
         ImTextureID proBlackLevelImg = (ImTextureID)gfx::getImGuiImage("pro_black_level");
+        ImTextureID proVignettingImg = (ImTextureID)gfx::getImGuiImage("pro_vignetting");
+        ImTextureID proChromaticAberrationImg = (ImTextureID)gfx::getImGuiImage("pro_chromatic_aberration");
+        ImTextureID proColorShadingImg = (ImTextureID)gfx::getImGuiImage("pro_color_shading");
+        ImTextureID proLensImg = (ImTextureID)gfx::getImGuiImage("pro_lens");
+        ImTextureID proWhiteBalanceImg = (ImTextureID)gfx::getImGuiImage("pro_white_balance");
         ImTextureID proOutputImg = (ImTextureID)gfx::getImGuiImage("pro_output");
 
         // Plot image degradation stages
@@ -213,6 +218,16 @@ void Project::onUIRender() {
             plotImage("Dead pixel correction", proDeadPixelImg, x, y, 1.0f, ratio);
             x += 1.1f;
             plotImage("Black level correction", proBlackLevelImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Vignetting correction", proVignettingImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Chromatic aberration correction", proChromaticAberrationImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Color shading correction", proColorShadingImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("Lens correction", proLensImg, x, y, 1.0f, ratio);
+            x += 1.1f;
+            plotImage("White balance correction", proWhiteBalanceImg, x, y, 1.0f, ratio);
             x += 1.1f;
 
             ImPlot::EndPlot();
@@ -308,11 +323,17 @@ void Project::onAttaLoop() {
         proVignettingCorrection(proBlackLevelData, proVignettingData, w, h, ch);
         proVignettingImg->update();
 
+        // Chromatic aberration correction
+        res::Image* proChromaticAberrationImg = res::get<res::Image>("pro_chromatic_aberration");
+        uint8_t* proChromaticAberrationData = proChromaticAberrationImg->getData();
+        proChromaticAberrationCorrection(proVignettingData, proChromaticAberrationData, w, h, ch);
+        proChromaticAberrationImg->update();
+
         // Processed output
         res::Image* proOutputImg = res::get<res::Image>("pro_output");
         uint8_t* proOutputData = proOutputImg->getData();
         for (uint32_t i = 0; i < w * h * ch; i++)
-            proOutputData[i] = proVignettingData[i];
+            proOutputData[i] = proChromaticAberrationData[i];
         proOutputImg->update();
 
         _shouldReprocess = false;
@@ -577,6 +598,40 @@ void Project::proVignettingCorrection(const uint8_t* inData, uint8_t* outData, u
             outData[idx] = static_cast<uint8_t>(std::clamp(inData[idx] / vignetting, 0.0f, 255.0f));
             outData[idx + 1] = static_cast<uint8_t>(std::clamp(inData[idx + 1] / vignetting, 0.0f, 255.0f));
             outData[idx + 2] = static_cast<uint8_t>(std::clamp(inData[idx + 2] / vignetting, 0.0f, 255.0f));
+        }
+    }
+}
+
+void Project::proChromaticAberrationCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+            // Compute normalized radial distance
+            atta::vec2 delta = atta::vec2(x, y) - center;
+            float r = delta.length() / center.length();
+            float r2 = r * r;
+            float r3 = r2 * r;
+
+            // Calculate chromatic aberration displacement for Red channel
+            float displacementR = (_chromaticAberrationCoeffsR[0] * r2 + _chromaticAberrationCoeffsR[1] * r3);
+            float sxR_float = center.x + delta.x * (1.0f - displacementR);
+            float syR_float = center.y + delta.y * (1.0f - displacementR);
+
+            // Calculate chromatic aberration displacement for Blue channel
+            float displacementB = (_chromaticAberrationCoeffsB[0] * r2 + _chromaticAberrationCoeffsB[1] * r3);
+            float sxB_float = center.x + delta.x * (1.0f - displacementB);
+            float syB_float = center.y + delta.y * (1.0f - displacementB);
+
+            // Sample from vignettingData (nearest neighbor sampling)
+            // outData[idx + 0] = (uint8_t)nearestNeighborSampling(inData, w, h, ch, sxR_float, syR_float).x;
+            // outData[idx + 1] = inData[(y * w + x) * ch + 1];
+            // outData[idx + 2] = (uint8_t)nearestNeighborSampling(inData, w, h, ch, sxB_float, syB_float).z;
+
+            // Sample from vignettingData (bilinear sampling)
+            outData[idx + 0] = (uint8_t)bilinearSampling(inData, w, h, ch, sxR_float, syR_float).x;
+            outData[idx + 1] = inData[(y * w + x) * ch + 1];
+            outData[idx + 2] = (uint8_t)bilinearSampling(inData, w, h, ch, sxB_float, syB_float).z;
         }
     }
 }
