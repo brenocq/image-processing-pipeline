@@ -274,22 +274,22 @@ void Project::onAttaLoop() {
     }
 }
 
-void Project::degWhiteBalanceError(const uint8_t* refData, uint8_t* whiteBalanceData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degWhiteBalanceError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     for (uint32_t i = 0; i < w * h; i++) {
         // Get the RGB values for the current pixel
-        uint8_t r = refData[i * ch];
-        uint8_t g = refData[i * ch + 1];
-        uint8_t b = refData[i * ch + 2];
+        uint8_t r = inData[i * ch];
+        uint8_t g = inData[i * ch + 1];
+        uint8_t b = inData[i * ch + 2];
 
         // Apply the temperature gain to each channel
         const atta::vec3 gains = tempToGain(_colorTemperature);
-        whiteBalanceData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
-        whiteBalanceData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
-        whiteBalanceData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
+        outData[i * ch] = static_cast<uint8_t>(std::min(255.0f, r * gains.x));
+        outData[i * ch + 1] = static_cast<uint8_t>(std::min(255.0f, g * gains.y));
+        outData[i * ch + 2] = static_cast<uint8_t>(std::min(255.0f, b * gains.z));
     }
 }
 
-void Project::degLensDistortion(const uint8_t* refData, uint8_t* lensData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degLensDistortion(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     atta::vec2 center(w / 2.0f, h / 2.0f);
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
@@ -314,15 +314,15 @@ void Project::degLensDistortion(const uint8_t* refData, uint8_t* lensData, uint3
             float yDist = center.y + lensR * std::sin(angle) * center.length();
 
             // Sample distorted coordinate in source image
-            atta::vec3 pixel = bilinearSampling(refData, w, h, ch, xDist, yDist);
-            lensData[idx + 0] = static_cast<uint8_t>(pixel.x);
-            lensData[idx + 1] = static_cast<uint8_t>(pixel.y);
-            lensData[idx + 2] = static_cast<uint8_t>(pixel.z);
+            atta::vec3 pixel = bilinearSampling(inData, w, h, ch, xDist, yDist);
+            outData[idx + 0] = static_cast<uint8_t>(pixel.x);
+            outData[idx + 1] = static_cast<uint8_t>(pixel.y);
+            outData[idx + 2] = static_cast<uint8_t>(pixel.z);
         }
     }
 }
 
-void Project::degColorShadingError(const uint8_t* refData, uint8_t* colorShadingData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degColorShadingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     atta::vec2 center(w / 2.0f, h / 2.0f);
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
@@ -343,19 +343,19 @@ void Project::degColorShadingError(const uint8_t* refData, uint8_t* colorShading
             const atta::vec3& gain2 = _colorShadingError[gainIdx2];
             atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
 
-            const uint8_t* inPix = &refData[idx];
+            const uint8_t* inPix = &inData[idx];
             atta::vec3 pixel(inPix[0], inPix[1], inPix[2]);
             atta::vec3 shadedPixel = pixel * gain;
 
             // Save shaded pixel
-            colorShadingData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
-            colorShadingData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
-            colorShadingData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+            outData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
+            outData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
+            outData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
         }
     }
 }
 
-void Project::degChromaticAberrationError(const uint8_t* refData, uint8_t* chromaticAberrationData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degChromaticAberrationError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     atta::vec2 center(w / 2.0f, h / 2.0f);
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
@@ -377,19 +377,19 @@ void Project::degChromaticAberrationError(const uint8_t* refData, uint8_t* chrom
             float syB_float = center.y + delta.y * (1.0f + displacementB);
 
             // Sample from vignettingData (nearest neighbor sampling)
-            // chromaticAberrationData[idx + 0] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxR_float, syR_float).x;
-            // chromaticAberrationData[idx + 1] = vignettingData[(y * w + x) * ch + 1];
-            // chromaticAberrationData[idx + 2] = (uint8_t)nearestNeighborSampling(colorShadingData, w, h, ch, sxB_float, syB_float).z;
+            // outData[idx + 0] = (uint8_t)nearestNeighborSampling(inData, w, h, ch, sxR_float, syR_float).x;
+            // outData[idx + 1] = inData[(y * w + x) * ch + 1];
+            // outData[idx + 2] = (uint8_t)nearestNeighborSampling(inData, w, h, ch, sxB_float, syB_float).z;
 
             // Sample from vignettingData (bilinear sampling)
-            chromaticAberrationData[idx + 0] = (uint8_t)bilinearSampling(refData, w, h, ch, sxR_float, syR_float).x;
-            chromaticAberrationData[idx + 1] = refData[(y * w + x) * ch + 1];
-            chromaticAberrationData[idx + 2] = (uint8_t)bilinearSampling(refData, w, h, ch, sxB_float, syB_float).z;
+            outData[idx + 0] = (uint8_t)bilinearSampling(inData, w, h, ch, sxR_float, syR_float).x;
+            outData[idx + 1] = inData[(y * w + x) * ch + 1];
+            outData[idx + 2] = (uint8_t)bilinearSampling(inData, w, h, ch, sxB_float, syB_float).z;
         }
     }
 }
 
-void Project::degVignettingError(const uint8_t* refData, uint8_t* vignettingData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degVignettingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     atta::vec2 center(w / 2.0f, h / 2.0f);
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
@@ -406,23 +406,23 @@ void Project::degVignettingError(const uint8_t* refData, uint8_t* vignettingData
                 _vignettingCoeffs[0] * r4 + _vignettingCoeffs[1] * r3 + _vignettingCoeffs[2] * r2 + _vignettingCoeffs[3] * r + _vignettingCoeffs[4];
 
             // Apply vignetting to the pixel
-            vignettingData[idx] = static_cast<uint8_t>(std::clamp(refData[idx] * vignetting, 0.0f, 255.0f));
-            vignettingData[idx + 1] = static_cast<uint8_t>(std::clamp(refData[idx + 1] * vignetting, 0.0f, 255.0f));
-            vignettingData[idx + 2] = static_cast<uint8_t>(std::clamp(refData[idx + 2] * vignetting, 0.0f, 255.0f));
+            outData[idx] = static_cast<uint8_t>(std::clamp(inData[idx] * vignetting, 0.0f, 255.0f));
+            outData[idx + 1] = static_cast<uint8_t>(std::clamp(inData[idx + 1] * vignetting, 0.0f, 255.0f));
+            outData[idx + 2] = static_cast<uint8_t>(std::clamp(inData[idx + 2] * vignetting, 0.0f, 255.0f));
         }
     }
 }
 
-void Project::degBlackLevelOffset(const uint8_t* refData, uint8_t* blackLevelData, uint32_t w, uint32_t h, uint32_t ch) const {
+void Project::degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
     for (uint32_t i = 0; i < w * h * ch; i++) {
-        if (uint32_t(refData[i]) + _blackLevelOffset >= 255)
-            blackLevelData[i] = 255;
+        if (uint32_t(inData[i]) + _blackLevelOffset >= 255)
+            outData[i] = 255;
         else
-            blackLevelData[i] = refData[i] + _blackLevelOffset;
+            outData[i] = inData[i] + _blackLevelOffset;
     }
 }
 
-void Project::degDeadPixelInjection(const uint8_t* refData, uint8_t* deadPixelData, uint32_t w, uint32_t h, uint32_t ch) {
+void Project::degDeadPixelInjection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) {
     // Dead pixel injection (randomly set a channel to 0 - simulate photosite failure)
     std::mt19937 gen(42);                           // Random number generator
     std::uniform_real_distribution<> dis(0.0, 1.0); // Uniform distribution in [0, 1]
@@ -431,11 +431,41 @@ void Project::degDeadPixelInjection(const uint8_t* refData, uint8_t* deadPixelDa
     for (uint32_t i = 0; i < w * h * ch; i++) {
         bool isDeadPixel = dis(gen) < _percentDeadPixels;
         if (isDeadPixel) {
-            deadPixelData[i] = 0;
+            outData[i] = 0;
             _deadPixels.push_back(i); // This list should be generated during calibration in practice in practice
         } else {
-            deadPixelData[i] = refData[i];
+            outData[i] = inData[i];
         }
+    }
+}
+
+void Project::proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Dead pixel correction (nearest neighbor sampling)
+    for (uint32_t i = 0; i < _deadPixels.size(); i++) {
+        uint32_t idx = _deadPixels[i];
+        uint32_t sum = 0;
+        uint32_t count = 0;
+
+        // TODO should not use neighbor if the neighbor is also a dead pixel
+        if (idx >= ch) {
+            sum += inData[idx - ch];
+            count++;
+        }
+        if (idx + ch < w * h * ch) {
+            sum += inData[idx + ch];
+            count++;
+        }
+        if (idx >= ch * w) {
+            sum += inData[idx - ch * w];
+            count++;
+        }
+        if (idx + ch * w < w * h * ch) {
+            sum += inData[idx + ch * w];
+            count++;
+        }
+
+        // Average of 4 neighbors
+        outData[idx] = sum / count;
     }
 }
 

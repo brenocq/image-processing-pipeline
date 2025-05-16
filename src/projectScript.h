@@ -22,13 +22,16 @@ class Project : public scr::ProjectScript {
     bool _shouldReprocess = true;
 
     // Degradation pipeline
-    void degWhiteBalanceError(const uint8_t* refData, uint8_t* whiteBalanceData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degLensDistortion(const uint8_t* refData, uint8_t* lensData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degColorShadingError(const uint8_t* refData, uint8_t* colorShadingData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degChromaticAberrationError(const uint8_t* refData, uint8_t* chromaticAberrationData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degVignettingError(const uint8_t* refData, uint8_t* vignettingData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degBlackLevelOffset(const uint8_t* refData, uint8_t* blackLevelData, uint32_t w, uint32_t h, uint32_t ch) const;
-    void degDeadPixelInjection(const uint8_t* refData, uint8_t* deadPixelData, uint32_t w, uint32_t h, uint32_t ch);
+    void degWhiteBalanceError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degLensDistortion(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degColorShadingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degChromaticAberrationError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degVignettingError(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degBlackLevelOffset(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void degDeadPixelInjection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch);
+
+    // Image processing pipeline
+    void proDeadPixelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
 
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
     static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
