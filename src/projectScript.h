@@ -35,6 +35,9 @@ class Project : public scr::ProjectScript {
     void proBlackLevelCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
     void proVignettingCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
     void proChromaticAberrationCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void proColorShadingCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void proLensCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
+    void proWhiteBalanceCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const;
 
     static atta::vec3 nearestNeighborSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
     static atta::vec3 bilinearSampling(const uint8_t* data, uint32_t w, uint32_t h, uint32_t ch, float x, float y);
@@ -132,6 +135,11 @@ class Project : public scr::ProjectScript {
     // The chromatic aberration correction will be done by applying the inverse of the chromatic aberration polynomial to the image.
     // Since chromatic aberration is caused by the lens design, the CA correction profile can be calibrated once per lens design (or once for each
     // camera during factory calibration).
+
+    //--- Color shading correction ---//
+    // The color shading correction will be done by applying the inverse of the color shading polynomial to the image.
+    // Since color shading is caused by the lens design, the color shading correction profile can be calibrated once per lens design (or once for
+    // each camera during factory calibration).
 };
 
 ATTA_REGISTER_PROJECT_SCRIPT(Project)

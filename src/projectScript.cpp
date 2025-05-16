@@ -329,11 +329,29 @@ void Project::onAttaLoop() {
         proChromaticAberrationCorrection(proVignettingData, proChromaticAberrationData, w, h, ch);
         proChromaticAberrationImg->update();
 
+        // Color shading correction
+        res::Image* proColorShadingImg = res::get<res::Image>("pro_color_shading");
+        uint8_t* proColorShadingData = proColorShadingImg->getData();
+        proColorShadingCorrection(proChromaticAberrationData, proColorShadingData, w, h, ch);
+        proColorShadingImg->update();
+
+        // Lens correction
+        res::Image* proLensImg = res::get<res::Image>("pro_lens");
+        uint8_t* proLensData = proLensImg->getData();
+        proLensCorrection(proColorShadingData, proLensData, w, h, ch);
+        proLensImg->update();
+
+        // White balance correction
+        res::Image* proWhiteBalanceImg = res::get<res::Image>("pro_white_balance");
+        uint8_t* proWhiteBalanceData = proWhiteBalanceImg->getData();
+        proWhiteBalanceCorrection(proLensData, proWhiteBalanceData, w, h, ch);
+        proWhiteBalanceImg->update();
+
         // Processed output
         res::Image* proOutputImg = res::get<res::Image>("pro_output");
         uint8_t* proOutputData = proOutputImg->getData();
         for (uint32_t i = 0; i < w * h * ch; i++)
-            proOutputData[i] = proChromaticAberrationData[i];
+            proOutputData[i] = proWhiteBalanceData[i];
         proOutputImg->update();
 
         _shouldReprocess = false;
@@ -634,6 +652,51 @@ void Project::proChromaticAberrationCorrection(const uint8_t* inData, uint8_t* o
             outData[idx + 2] = (uint8_t)bilinearSampling(inData, w, h, ch, sxB_float, syB_float).z;
         }
     }
+}
+
+void Project::proColorShadingCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    atta::vec2 center(w / 2.0f, h / 2.0f);
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t idx = (y * w + x) * ch;
+
+            // Compute normalized radial distance
+            float r = (atta::vec2(x, y) - center).length() / center.length();
+
+            // Compute color shading indices
+            uint32_t gainIdx1 = static_cast<uint32_t>(r * (COLOR_SHADING_COUNT - 1));
+            uint32_t gainIdx2 = gainIdx1 + 1;
+            if (gainIdx2 >= COLOR_SHADING_COUNT)
+                gainIdx2 = COLOR_SHADING_COUNT - 1;
+
+            // Interpolate gain
+            float t = r * (COLOR_SHADING_COUNT - 1) - static_cast<float>(gainIdx1);
+            const atta::vec3& gain1 = _colorShadingError[gainIdx1];
+            const atta::vec3& gain2 = _colorShadingError[gainIdx2];
+            atta::vec3 gain = (1.0f - t) * gain1 + t * gain2;
+
+            const uint8_t* inPix = &inData[idx];
+            atta::vec3 pixel(inPix[0], inPix[1], inPix[2]);
+            atta::vec3 shadedPixel = pixel / gain;
+
+            // Save shaded pixel
+            outData[idx] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.x));
+            outData[idx + 1] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.y));
+            outData[idx + 2] = static_cast<uint8_t>(std::min(255.0f, shadedPixel.z));
+        }
+    }
+}
+
+void Project::proLensCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Copy input data to output data
+    for (uint32_t i = 0; i < w * h * ch; i++)
+        outData[i] = inData[i];
+}
+
+void Project::proWhiteBalanceCorrection(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Copy input data to output data
+    for (uint32_t i = 0; i < w * h * ch; i++)
+        outData[i] = inData[i];
 }
 
 atta::vec3 Project::tempToGain(float temp) {
