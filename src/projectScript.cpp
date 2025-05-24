@@ -344,7 +344,8 @@ void Project::onAttaLoop() {
         // White balance correction
         res::Image* proWhiteBalanceImg = res::get<res::Image>("pro_white_balance");
         uint8_t* proWhiteBalanceData = proWhiteBalanceImg->getData();
-        proWhiteBalanceCorrection(proLensData, proWhiteBalanceData, w, h, ch);
+        proWhiteBalanceCorrection(proLensData, proWhiteBalanceData, w, h, ch);// Apply ideal white balance correction
+        // proWhiteBalanceCorrectionAuto(proLensData, proWhiteBalanceData, w, h, ch); // Apply automatic white balance correction
         proWhiteBalanceImg->update();
 
         // Processed output
@@ -743,6 +744,106 @@ void Project::proWhiteBalanceCorrection(const uint8_t* inData, uint8_t* outData,
         outData[i * ch] = static_cast<uint8_t>(std::clamp(r / gains.x, 0.0f, 255.0f));
         outData[i * ch + 1] = static_cast<uint8_t>(std::clamp(g / gains.y, 0.0f, 255.0f));
         outData[i * ch + 2] = static_cast<uint8_t>(std::clamp(b / gains.z, 0.0f, 255.0f));
+    }
+}
+
+void Project::proWhiteBalanceCorrectionAuto(const uint8_t* inData, uint8_t* outData, uint32_t w, uint32_t h, uint32_t ch) const {
+    // Implementation of the white patch auto white balance correction
+
+    // Pass 1: Find the brightest pixel in the image
+    float maxLuminance = 0.0f;
+    for (uint32_t i = 0; i < w * h; ++i) {
+        float r = static_cast<float>(inData[i * ch + 0]);
+        float g = static_cast<float>(inData[i * ch + 1]);
+        float b = static_cast<float>(inData[i * ch + 2]);
+
+        // Simple luminance approximation (average of channels)
+        float luminance = (r + g + b) / 3.0f;
+        maxLuminance = std::max(maxLuminance, luminance);
+    }
+
+    // If image is too dark, skip correction
+    if (maxLuminance <= 30.0f) {
+        LOG_INFO("AWB", "Image is too dark for white balance correction, skipping. $0", maxLuminance);
+        for (uint32_t i = 0; i < w * h * ch; ++i)
+            outData[i] = inData[i]; // No correction needed
+        return;
+    }
+
+    // Pass 2: Accumulate R, G, B sums for bright pixels
+    double sumR = 0.0;
+    double sumG = 0.0;
+    double sumB = 0.0;
+    uint32_t countBrightPixels = 0;
+
+    // Threshold for selecting brightest pixels (e.g., top 20% of max luminance)
+    // This can be adjusted based on desired sensitivity
+    float luminanceThreshold = maxLuminance * 0.8f;
+
+    // Threshold for a pixel to be considered "near white" (low color difference)
+    // This prevents highly saturated bright colors from being mistaken for white
+    float colorDiffThreshold = 50.0f;
+
+    for (uint32_t i = 0; i < w * h; ++i) {
+        float r = static_cast<float>(inData[i * ch + 0]);
+        float g = static_cast<float>(inData[i * ch + 1]);
+        float b = static_cast<float>(inData[i * ch + 2]);
+        float luminance = (r + g + b) / 3.0f;
+
+        // Check if pixel is bright enough
+        if (luminance >= luminanceThreshold) {
+            // Check if pixel is "near white" by examining channel differences
+            float minChannel = std::min({r, g, b});
+            float maxChannel = std::max({r, g, b});
+
+            if ((maxChannel - minChannel) <= colorDiffThreshold) {
+                sumR += r;
+                sumG += g;
+                sumB += b;
+                countBrightPixels++;
+            }
+        }
+    }
+
+    // Compute scaling factors based on bright pixels
+    float scaleR = 1.0f;
+    float scaleB = 1.0f;
+    if (countBrightPixels >= 10) {
+        // Calculate average RGB values from bright pixels
+        float avgR = static_cast<float>(sumR / countBrightPixels);
+        float avgG = static_cast<float>(sumG / countBrightPixels);
+        float avgB = static_cast<float>(sumB / countBrightPixels);
+
+        if (avgR > 1e-5f)
+            scaleR = avgG / avgR;
+        if (avgB > 1e-5f)
+            scaleB = avgG / avgB;
+        LOG_INFO("AWB", "Computed gains: R $0, G $1, B $2", scaleR, 1.0f, scaleB);
+
+        const atta::vec3 gains = tempToGain(_colorTemperature);
+        LOG_INFO("AWB", "Expected gains $0 $1 $2", 1 / gains.x, 1 / gains.y, 1 / gains.z);
+    } else {
+        LOG_INFO("AWB", "Not enough bright pixels found for white balance correction, skipping. $0", countBrightPixels);
+        // If not enough bright pixels were found, skip correction
+        for (uint32_t i = 0; i < w * h * ch; ++i)
+            outData[i] = inData[i]; // No correction needed
+        return;
+    }
+
+    // Pass 3: Apply scaling factors to the entire image
+    for (uint32_t i = 0; i < w * h; ++i) {
+        float r = static_cast<float>(inData[i * ch + 0]);
+        float g = static_cast<float>(inData[i * ch + 1]);
+        float b = static_cast<float>(inData[i * ch + 2]);
+
+        // Apply scales to R and B channels
+        float outR = r * scaleR;
+        float outB = b * scaleB;
+
+        // Clamp values to 0-255 range and cast to uint8_t
+        outData[i * ch + 0] = static_cast<uint8_t>(std::clamp(outR, 0.0f, 255.0f));
+        outData[i * ch + 1] = static_cast<uint8_t>(std::clamp(g, 0.0f, 255.0f));
+        outData[i * ch + 2] = static_cast<uint8_t>(std::clamp(outB, 0.0f, 255.0f));
     }
 }
 
