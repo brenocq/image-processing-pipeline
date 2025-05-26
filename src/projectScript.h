@@ -18,7 +18,7 @@ class Project : public scr::ProjectScript {
 
   private:
     std::vector<std::string> _testImages;
-    int _selectedImage = 1;
+    int _selectedImage = 0;
     bool _shouldReprocess = true;
 
     // Degradation pipeline

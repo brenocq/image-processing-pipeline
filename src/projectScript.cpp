@@ -7,6 +7,7 @@
 #include "projectScript.h"
 #include "imgui.h"
 #include "implot.h"
+#include <atta/file/interface.h>
 #include <atta/graphics/interface.h>
 #include <atta/resource/interface.h>
 #include <random>
@@ -26,16 +27,6 @@ std::array<atta::vec3, Project::COLOR_SHADING_COUNT> Project::_colorShadingError
 };
 
 void Project::onLoad() {
-    // TODO get project path
-    // Save name of all test images when the project is first loaded
-    for (const auto& file : fs::directory_iterator("resources")) {
-        if (file.path().extension() == ".png") {
-            std::string filename = file.path().filename().string();
-            _testImages.push_back(filename);
-        }
-    }
-    LOG_INFO("Project", "The project was loaded with [w]$0[] test images", _testImages.size());
-
     // Default image info
     res::Image::CreateInfo info;
     info.width = 100;
@@ -44,7 +35,8 @@ void Project::onLoad() {
 
     // Images to store output of each pipeline stage
     res::Image* ref = res::create<res::Image>("reference", info);
-    ref->load(fs::absolute("resources/" + _testImages[_selectedImage]));
+    fs::path imagePath = fil::getProject()->getResourceRootPaths()[0] / "taiwan.png";
+    ref->load(imagePath);
     info.width = ref->getWidth();
     info.height = ref->getHeight();
 
@@ -153,8 +145,8 @@ void Project::onUIRender() {
                 return nullptr;
             return vec->at(idx).c_str();
         };
-        if (ImGui::Combo("Test Image", &_selectedImage, imgGetter, static_cast<void*>(&_testImages), _testImages.size()))
-            _shouldReprocess = true;
+        // if (ImGui::Combo("Test Image", &_selectedImage, imgGetter, static_cast<void*>(&_testImages), _testImages.size()))
+        //     _shouldReprocess = true;
 
         // Compute image ratio
         res::Image* refImgRes = res::get<res::Image>("reference");
@@ -238,9 +230,6 @@ void Project::onUIRender() {
 
 void Project::onAttaLoop() {
     if (_shouldReprocess) {
-        fs::path testImgPath = fs::absolute("resources/" + _testImages[_selectedImage]);
-        LOG_INFO("Project", "Processing test image [w]$0[]...", testImgPath);
-
         res::Image* refImg = res::get<res::Image>("reference");
         uint8_t* refData = refImg->getData();
         uint32_t w = refImg->getWidth();
@@ -249,6 +238,8 @@ void Project::onAttaLoop() {
         uint32_t ch = refImg->getChannels();
 
         // Load test image
+        // fs::path testImgPath = fs::absolute("resources/" + _testImages[_selectedImage]);
+        // LOG_INFO("Project", "Processing test image [w]$0[]...", testImgPath);
         // refImg->load(testImgPath);
         // Resize images
         // blackLevelImg->resize(refImg->getWidth(), refImg->getHeight());
@@ -344,7 +335,7 @@ void Project::onAttaLoop() {
         // White balance correction
         res::Image* proWhiteBalanceImg = res::get<res::Image>("pro_white_balance");
         uint8_t* proWhiteBalanceData = proWhiteBalanceImg->getData();
-        proWhiteBalanceCorrection(proLensData, proWhiteBalanceData, w, h, ch);// Apply ideal white balance correction
+        proWhiteBalanceCorrection(proLensData, proWhiteBalanceData, w, h, ch); // Apply ideal white balance correction
         // proWhiteBalanceCorrectionAuto(proLensData, proWhiteBalanceData, w, h, ch); // Apply automatic white balance correction
         proWhiteBalanceImg->update();
 
