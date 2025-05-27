@@ -21,12 +21,16 @@ This pipeline takes a clean, high-quality image and introduces various common im
 
   <img src="https://github.com/user-attachments/assets/53a9b86f-1ab3-44c3-b9fe-8ce8636a87eb" width="150"/>
 * **White Balance Error:** Simulates color casts caused by non-neutral environmental illumination (e.g., incandescent, shade).
+  
   <img src="https://github.com/user-attachments/assets/cf5b420b-4c8d-4a13-b7f8-bc66186cd1a6" width="150"/>
 * **Barrel Lens Distortion:** Introduces geometric warping where straight lines in the scene appear to bend outwards from the center.
+  
   <img src="https://github.com/user-attachments/assets/623d842e-d36b-43d9-93fa-38b8cba74b6b" width="150"/>
 * **Color Shading Error:** Applies color tints that vary across the image frame, often seen as a color shift towards the edges.
+  
   <img src="https://github.com/user-attachments/assets/370dba88-67e9-45e1-b7a1-4838b48de56c" width="150"/>
 * **Chromatic Aberration:** Simulates color fringing (usually red/cyan or blue/yellow) around high-contrast edges due to the lens's inability to focus all colors to the same point.
+  
   <div align="left">
     <img src="https://github.com/user-attachments/assets/0d9ca23c-5963-4817-8846-33bd6906e81e" width="150"/>
     <img src="https://github.com/user-attachments/assets/ea73a613-641c-4361-bb49-f881d4b87a51" width="150"/>
@@ -38,6 +42,7 @@ This pipeline takes a clean, high-quality image and introduces various common im
   
   <img src="https://github.com/user-attachments/assets/55b372d8-82fb-4532-b37c-5fdd38851f2a" width="150"/>
 * **Dead Pixel Injection:** Randomly inserts non-functional pixels (e.g., pixels stuck at a zero value) into the image data.
+  
   <div align="left">
     <img src="https://github.com/user-attachments/assets/f69cd73b-59bb-4ee1-89e9-ec1a661e0b06" width="150"/>
     <img src="https://github.com/user-attachments/assets/fe6bfa2b-764b-418f-a5dc-474e0cce8aa7" width="150"/>
