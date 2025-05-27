@@ -174,7 +174,7 @@ void Project::onUIRender() {
 
         // Plot image degradation stages
         const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoTickLabels;
-        if (ImPlot::BeginPlot("Image pipeline", {-1, 350}, ImPlotFlags_Equal)) {
+        if (ImPlot::BeginPlot("Image pipeline", {-1, -1}, ImPlotFlags_Equal)) {
             ImPlot::SetupAxes(nullptr, nullptr, axisFlags, axisFlags);
             float x = 0.0f;
             float y = 0.0f;

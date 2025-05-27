@@ -1,5 +1,5 @@
 [project]
-attaVersion = "0.3.10"
+attaVersion = "0.3.11"
 name = "image-processing-pipeline"
 
 [config]
